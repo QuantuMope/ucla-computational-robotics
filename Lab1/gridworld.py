@@ -21,7 +21,7 @@ class GridWorld():
         self.gamma = 0.9
 
     def get_reward(self, x, y):
-        return self.rewards[x, y]
+        return self.rewards[y, x]
 
     def init_rewards(self):
         reward_space = np.zeros((self.width, self.height))
@@ -64,7 +64,7 @@ class GridWorld():
                 else:
                     probabilities[new_state.tuple()] = err_prob
 
-        assert abs(sum(probabilities.values()) - 1) < 0.01
+        assert abs(sum(probabilities.values()) - 1) < 0.001
         return probabilities
         # try:
         #     return probabilities[s_prime]
@@ -121,10 +121,12 @@ class GridWorld():
 
     # VALUE ITERATION
     def value_iterate(self):
-        tol = 0.001
+        tol = 0.0001
         vf = np.zeros((self.width, self.height, ROTATION_SIZE))
         new_vf = vf.copy()
+        counter = 0
         while True:
+            counter += 1
             for x in range(self.width):
                 for y in range(self.height):
                     for r in range(ROTATION_SIZE):
@@ -135,10 +137,10 @@ class GridWorld():
                                 state = State(x, y, r)
                                 prob, next_state, rewards = self.get_all_data(state ,action)
                                 for i in range(len(prob)):
-                                    all_values[move, rotate] += prob[i]*(rewards[i] + self.gamma*vf[next_state[i]])
-                        new_vf[x, y, r] = np.amax(all_values)
+                                    all_values[move+1, rotate+1] += prob[i]*(rewards[i] + self.gamma*vf[next_state[i]])
+                        new_vf[y, x, r] = np.amax(all_values)
             if np.all(np.abs(vf - new_vf) < tol):
-                output = (np.round(new_vf, 2))
+                output = (np.round(new_vf, 4))
                 for i in range(12):
                     print("------------------------- Rotation = {} ---------------------------------".format(i))
                     print(output[:, :, i])
