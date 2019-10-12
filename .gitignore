@@ -1,3 +1,4 @@
 venv/
 .idea/
 pset0/
+__pycache__/
