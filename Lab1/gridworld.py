@@ -67,9 +67,9 @@ class GridWorld():
         assert abs(sum(probabilities.values()) - 1) < 0.01
         return probabilities
         # try:
-        #     return probabilities[s_prime], probabilities
+        #     return probabilities[s_prime]
         # except IndexError():
-        #     return 0, probabilities
+        #     return 0
 
     def get_new_state_helper(self, state, action):
         rot = state.rotation
