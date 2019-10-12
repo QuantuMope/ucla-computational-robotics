@@ -20,6 +20,9 @@ class GridWorld():
         self.rewards = self.init_rewards()
         self.gamma = 0.9
 
+    # def init_states_and_actions(self):
+
+
     def get_reward(self, x, y):
         return self.rewards[y, x]
 
@@ -51,7 +54,6 @@ class GridWorld():
         probabilities = {}
         if action.move == 0:
             new_state = state.copy()
-            new_state.rotate(action.rotate)
             probabilities[new_state.tuple()] = 1
         else:
             possible_errors = self.get_error_states(state)
@@ -130,15 +132,18 @@ class GridWorld():
             for x in range(self.width):
                 for y in range(self.height):
                     for r in range(ROTATION_SIZE):
-                        all_values = np.zeros((3, 3))
+                        all_values = np.zeros(7)
+                        a = 0
                         for move in range(-1, 2):
                             for rotate in range(-1, 2):
+                                if move == 0 and rotate != 0: continue
                                 action = Action(move, rotate)
                                 state = State(x, y, r)
                                 prob, next_state, rewards = self.get_all_data(state ,action)
                                 for i in range(len(prob)):
-                                    all_values[move+1, rotate+1] += prob[i]*(rewards[i] + self.gamma*vf[next_state[i]])
-                        new_vf[y, x, r] = np.amax(all_values)
+                                    all_values[a] += prob[i]*(rewards[i] + self.gamma*vf[next_state[i]])
+                                a += 1
+                        new_vf[y, x, r] = np.max(all_values)
             if np.all(np.abs(vf - new_vf) < tol):
                 output = (np.round(new_vf, 4))
                 for i in range(12):
