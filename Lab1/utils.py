@@ -80,3 +80,47 @@ def rotate(orig_rot, rotate_change):
     else:
         rotation = new_rotation
     return rotation
+
+def init_policy(state_space):
+    policy = [None]*len(state_space)
+    for state in state_space:
+        x, y, r = state[0], state[1], state[2]
+        x_dist = 5 - x
+        y_dist = 6 - y
+        move = 1
+        rot = 0
+        index = si(state)
+
+        if x_dist == 0 and y_dist == 0:
+            policy[index] = (0, 0)
+            continue
+
+        if x_dist != 0:
+            dir_x = 1 if x_dist > 0 else -1
+            if r in [2, 3, 4]:
+                move = dir_x
+            elif r in [8, 9, 10]:
+                move = -dir_x
+        else:
+            dir_y = 1 if y_dist < 0 else -1
+            if r in [11, 0, 1]:
+                move = -dir_y
+            elif r in [5, 6, 7]:
+                move = dir_y
+
+        if r not in [2, 3, 4, 8, 9, 10] and x_dist != 0:
+            if r in [7, 1]:
+                rot = 1
+            else:
+                rot = -1
+        elif r not in [11, 0, 1, 5, 6, 7] and y_dist != 0:
+            if r in [4, 10]:
+                rot = 1
+            else:
+                rot = -1
+
+        assert not (rot == 0 and move == 0)
+        policy[index] = (move, rot)
+
+    assert None not in policy
+    return policy

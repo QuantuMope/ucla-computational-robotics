@@ -1,5 +1,6 @@
 import numpy as np
-from utils import si, ai, new_state, get_error_states
+import matplotlib.pyplot as plt
+from utils import si, ai, new_state, get_error_states, init_policy
 
 ROTATION_SIZE = 12
 ACTION_SIZE = 4
@@ -25,6 +26,7 @@ class GridWorld:
         self.Na = len(self.action_space)
 
         self.reward_space = self.init_rewards()
+
 
     def init_state_space(self):
         """
@@ -141,7 +143,61 @@ class GridWorld:
             next_states.append(ns)
             rewards.append(self.get_reward(ns))
         return probs, next_states, rewards
-    
+
+    # 3. POLICY ITERATION
+
+    # Problem 3(b)
+    def generate_trajectory(self, initial_state, policy, pe):
+        fig, ax = plt.subplots(figsize=(self.width, self.height))
+        ax.grid(color='black')
+        plt.xlabel("X")
+        plt.ylabel("Y")
+        plt.title("Robot Trajectory")
+        plt.xlim((0, self.width))
+        plt.ylim((0, self.height))
+        Y = self.height-1
+        X = self.width-1
+        
+        bottom = plt.Rectangle((0, 0), self.width, 1, color='red')
+        top = plt.Rectangle((0, Y), self.width, 1, color='red')
+        left = plt.Rectangle((0, 0), 1, self.height, color='red')
+        right = plt.Rectangle((X, 0), 1, self.height, color='red')
+        ax.add_patch(bottom), ax.add_patch(top), ax.add_patch(left), ax.add_patch(right)
+        for x in range(self.width):
+            for y in range(self.height):
+                if x != 0 and x != X and y != 0 and y != Y:
+                    continue
+                plt.plot(x+0.5, y+0.5, markersize=20, marker='x', color='black')
+
+        barrier = plt.Rectangle((3, 4), 1, 3, color='yellow')
+        for y in range(4, 7):
+            plt.plot(3.5, y+0.5, markersize=20, marker='_', color='black')
+        goal = plt.Rectangle((5, 6), 1, 1, color='green')
+        plt.plot(5.5, 6.5, markersize=20, marker='*', color='black')
+        ax.add_patch(barrier), ax.add_patch(goal)
+
+        trajectory = []
+        curr_state = initial_state
+        while True:
+            trajectory.append(curr_state)
+            action = policy[si(curr_state)]
+            if action == (0, 0):
+                break
+            curr_state = self.get_new_state(curr_state, action, pe)
+
+        old_x, old_y = trajectory[0][0]+0.5, trajectory[0][1]+0.5
+        for state in trajectory:
+            x = state[0] + 0.5
+            y = state[1] + 0.5
+            dx = np.sin((2*np.pi)*(state[2]*30/360)) * 0.5
+            dy = np.cos((2*np.pi)*(state[2]*30/360)) * 0.5
+            plt.plot(x, y, marker='o', markersize=10, color='black')
+            plt.arrow(x, y, old_x-x, old_y-y, linestyle=':', color='blue')
+            plt.arrow(x, y, dx, dy, head_width=0.05)
+            old_x = x
+            old_y = y
+
+
     # 4. VALUE ITERATION
     def value_iterate(self, pe, tol=0.0001):
         vf = np.zeros(self.Ns)
@@ -154,6 +210,8 @@ class GridWorld:
                     for i in range(len(probs)):
                         q_values[e] += probs[i] * (rewards[i] + self.gamma * vf[si(next_states[i])]) 
                 new_vf[si(state)] = np.amax(q_values)
+
+
             if np.all(np.abs(vf - new_vf) < tol):
                 output = (np.round(new_vf, 3))
                 output = output.reshape(8, 8, 12)
@@ -162,13 +220,18 @@ class GridWorld:
                     print("------------------------- Rotation = {} ---------------------------------".format(i))
                     print(np.flip(np.swapaxes(output[:, :, i], 0, 1), 0))
                 break
+
+
             vf = new_vf.copy()
 
 
 
 def main():
     test = GridWorld()
-    test.value_iterate(pe=0)
+    test.generate_trajectory((1, 6, 6), init_policy(test.state_space), 0)
+    plt.show()
+
+    # test.value_iterate(pe=0)
     print("bp")
 
 
