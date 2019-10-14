@@ -1,34 +1,25 @@
-import numpy as np
-
 def si(state):
     """
     Helper function that converts state tuples to
-    proper indexes of the state_space.
+    indexes for proper indexing of the state space.
 
-    :param state: tuple of a state (x, y, r)
-    :return: index of the state in state_space
+    :param state: state tuple consisting of (x, y, r)
+    :return: index of the state in the state space
     """
     return state[2] + 12 * state[1] + 96 * state[0]
 
 
-def ai(action):
-    """
-
-    :param action:
-    :return: index of action in action_space
-    """
-    if action == (0, 0):
-        return 3
-    elif action == (1, -1):
-        return 4
-    elif action == (1, 0):
-        return 5
-    elif action == (1, 1):
-        return 6
-    return (action[1] + 1) + (action[0] + 1) * 3
-
-
 def get_error_states(state, pe):
+    """
+    Helper function that outputs a list of possible
+    states due to a given error probability.
+
+    :param state: initial state tuple (x, y, r)
+    :param pe: error probability
+    :return: list of tuples for each possible error
+             state [(state tuple, probability of occurrence)]
+    """
+
     err1_state = new_state(state, (0, 1))
     err2_state = new_state(state, (0, -1))
     return [(state, 1-2*pe),
@@ -38,10 +29,12 @@ def get_error_states(state, pe):
 
 def new_state(state, action):
     """
+    Helper function that outputs the resultant
+    state given an initial state and action taken.
 
-    :param state: (x, y, r)
-    :param action: (move, rotate)
-    :return:
+    :param state: initial state tuple (x, y, r)
+    :param action: action tuple (move, rotate)
+    :return new_s: resultant state tuple (x', y', r')
     """
     r = state[2]
     pos = [state[0], state[1]]
@@ -65,6 +58,15 @@ def new_state(state, action):
 
 
 def check_map_edge(new_pos):
+    """
+    Helper function for new_state that checks whether or not
+    movement from current action causes robot to go off the
+    grid or not.
+
+    :param new_pos: proposed new position tuple (x, y)
+    :return: bool value that is false if robot went off grid
+             and true otherwise.
+    """
     if new_pos[0] < 0 or new_pos[0] > 7 \
             or new_pos[1] < 0 or new_pos[1] > 7:
         return False
@@ -72,6 +74,20 @@ def check_map_edge(new_pos):
 
 
 def rotate(orig_rot, rotate_change):
+    """
+    Helper function for new_state that handles rotation changes.
+    Takes care of edge cases when transitioning from 11 to 0 or
+    vice-versa.
+
+    :param orig_rot: original rotation value ranging from 0 to 11
+    :param rotate_change: direction of rotation change ranging from -1 to 1
+    :return: new rotation value
+    """
+    if orig_rot < 0 or orig_rot > 11:
+        raise ValueError("Rotation value should be between 0 and 11 inclusive.")
+    if rotate_change not in [-1, 0, 1]:
+        raise ValueError("Rotation change value should be either -1, 0, or 1.")
+
     new_rotation = orig_rot + rotate_change
     if new_rotation == -1:
         rotation = 11
@@ -81,7 +97,16 @@ def rotate(orig_rot, rotate_change):
         rotation = new_rotation
     return rotation
 
+
 def init_policy(state_space):
+    """
+    Function that creates a crude hand-engineered policy.
+    Policy prioritizes closing in on the x-position first
+    and then the y-position until reaching goal at (5,6).
+
+    :param state_space: the state space of the environment
+    :return: a rudimentary policy for all states
+    """
     policy = [None]*len(state_space)
     for state in state_space:
         x, y, r = state[0], state[1], state[2]
@@ -91,10 +116,13 @@ def init_policy(state_space):
         rot = 0
         index = si(state)
 
+        # Assign (0, 0) action to goal states.
         if x_dist == 0 and y_dist == 0:
             policy[index] = (0, 0)
             continue
 
+        # Prioritize closing in on x distance first
+        # and then y distance movement wise.
         if x_dist != 0:
             dir_x = 1 if x_dist > 0 else -1
             if r in [2, 3, 4]:
@@ -108,6 +136,8 @@ def init_policy(state_space):
             elif r in [5, 6, 7]:
                 move = dir_y
 
+        # Change rotation depending on whether or not
+        # x or y distance is being closed in on.
         if r not in [2, 3, 4, 8, 9, 10] and x_dist != 0:
             if r in [7, 1]:
                 rot = 1
@@ -119,8 +149,12 @@ def init_policy(state_space):
             else:
                 rot = -1
 
+        # Make sure no (0, 0) action values are accidentally
+        # assigned to states other than the goal.
         assert not (rot == 0 and move == 0)
         policy[index] = (move, rot)
 
+    # Make sure the policy has an action assigned for every state.
     assert None not in policy
+
     return policy

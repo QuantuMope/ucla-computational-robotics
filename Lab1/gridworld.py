@@ -1,48 +1,73 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from utils import si, ai, new_state, get_error_states, init_policy
+from utils import si, new_state, get_error_states, init_policy
 
 ROTATION_SIZE = 12
-ACTION_SIZE = 4
-DEF_START = (1, 1, 6)
+ACTION_SIZE = 7
 GRID_WIDTH = 8
 GRID_HEIGHT = 8
 
 
 class GridWorld:
+    """
+        Class capable of simulating an MDP system.
+        Creates an 8x8 grid world.
+    """
 
-    def __init__(self, start_pos=DEF_START):
+    def __init__(self):
         self.width = GRID_WIDTH
         self.height = GRID_HEIGHT
 
         # Problem 1(a)
-        self.state_space = self.init_state_space()
-        self.Ns = len(self.state_space)
+        self.state_space, self.Ns = self.init_state_space()
 
         # Problem 1(b)
-        self.action_space = self.init_action_space()
-        self.Na = len(self.action_space)
+        self.action_space, self.Na = self.init_action_space()
 
         self.reward_space = self.init_rewards()
 
-
     def init_state_space(self):
         """
+        Initializes the state space according to grid width
+        grid height, and possible rotational orientations.
 
-        :return: State space as numpy array
+        States are represented as tuples (x, y, r) where
+        x = x-position ranging from (0-7)
+        y = y-position ranging from (0-7)
+        r = rotational orientation ranging from (0-11)
+
+        :return state_space: array containing each possible
+                             state for the mdp system
+        :return Ns: size of the state space
         """
         state_space = []
         for x in range(self.width):
             for y in range(self.height):
                 for r in range(ROTATION_SIZE):
                     state_space.append((x, y, r))
-        return state_space
+        Ns = len(state_space)
+        return state_space, Ns
 
     def init_action_space(self):
         """
+        Initializes the action space.
 
-        :return:
+        Actions are represented as tuples (move, rotate) where
+        move = translational movement, can take on values
+               -1 ==> move backwards
+                0 ==> stay still
+                1 ==> move forward
+        rotate = rotational change, can take on values
+               -1 ==> rotate counter-clockwise
+                0 ==> don't rotate
+                1 ==> rotate clockwise
+
+        No rotation can be taken when robot decides to stay still.
+
+        :return action_space: array containing each possible
+                              action for the mdp system
+        :return Na: size of action space
         """
         action_space = []
         for move in range(-1, 2):
@@ -50,7 +75,8 @@ class GridWorld:
                 if move == 0 and rotate != 0:
                     continue
                 action_space.append((move, rotate))
-        return action_space
+        Na = len(action_space)
+        return action_space, Na
 
     def init_rewards(self):
         rs = np.zeros((self.width, self.height))
@@ -276,7 +302,7 @@ class GridWorld:
 
 def main():
     # Input error probability:
-    pe = 0.25
+    pe = 0
 
     env = GridWorld()
     init_pol = init_policy(env.state_space)
@@ -294,7 +320,7 @@ def main():
     end = time.time()
     # plt.show()
 
-    # Problem 3(i)
+    # Problem 3(i)q
     print("Policy Iteration took {} seconds.".format(np.round(end-start, 3)))
 
     # Problem 4(b)
