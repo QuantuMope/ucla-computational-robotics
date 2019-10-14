@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import time
 from utils import si, ai, new_state, get_error_states, init_policy
 
 ROTATION_SIZE = 12
@@ -11,11 +12,9 @@ GRID_HEIGHT = 8
 
 class GridWorld:
 
-    def __init__(self, gamma=0.9, start_pos=DEF_START):
+    def __init__(self, start_pos=DEF_START):
         self.width = GRID_WIDTH
         self.height = GRID_HEIGHT
-
-        self.gamma = gamma
 
         # Problem 1(a)
         self.state_space = self.init_state_space()
@@ -146,7 +145,7 @@ class GridWorld:
 
     # 3. POLICY ITERATION
 
-    # Problem 3(b)
+    # Problem 3(b) and 3(c)
     def generate_trajectory(self, initial_state, policy, pe):
         fig, ax = plt.subplots(figsize=(self.width, self.height))
         ax.grid(color='black')
@@ -172,7 +171,7 @@ class GridWorld:
         barrier = plt.Rectangle((3, 4), 1, 3, color='yellow')
         for y in range(4, 7):
             plt.plot(3.5, y+0.5, markersize=20, marker='_', color='black')
-        goal = plt.Rectangle((5, 6), 1, 1, color='green')
+        goal = plt.Rectangle((5, 6), 1, 1, color='lime')
         plt.plot(5.5, 6.5, markersize=20, marker='*', color='black')
         ax.add_patch(barrier), ax.add_patch(goal)
 
@@ -186,20 +185,70 @@ class GridWorld:
             curr_state = self.get_new_state(curr_state, action, pe)
 
         old_x, old_y = trajectory[0][0]+0.5, trajectory[0][1]+0.5
-        for state in trajectory:
+        for i, state in enumerate(trajectory):
             x = state[0] + 0.5
             y = state[1] + 0.5
             dx = np.sin((2*np.pi)*(state[2]*30/360)) * 0.5
             dy = np.cos((2*np.pi)*(state[2]*30/360)) * 0.5
             plt.plot(x, y, marker='o', markersize=10, color='black')
-            plt.arrow(x, y, old_x-x, old_y-y, linestyle=':', color='blue')
-            plt.arrow(x, y, dx, dy, head_width=0.05)
+            plt.arrow(x, y, old_x-x, old_y-y, linestyle=':', width=0.015, color='forestgreen')
+            plt.arrow(x, y, dx, dy, head_width=0.05, color='black')
+            plt.text(x+dx, y+dy, str(i), fontsize=12)
             old_x = x
             old_y = y
 
+    # Problem 3(d)
+    def evaluate_policy(self, policy, pe, gamma=0.9, tol=0.0001):
+        vf = np.zeros(self.Ns)
+
+        while True:
+            new_vf = np.zeros(self.Ns)
+            for state in self.state_space:
+                probs, next_states, rewards = self.get_all_data(state, policy[si(state)], pe)
+                for i in range(len(probs)):
+                    new_vf[si(state)] += probs[i] * (rewards[i] + gamma * vf[si(next_states[i])])
+            if np.all(np.abs(vf - new_vf) < tol):
+                break
+            vf = new_vf.copy()
+
+        return new_vf
+
+    # Problem 3(f)
+    def improve_policy(self, vf, pe, gamma=0.9):
+        new_policy = [None]*self.Ns
+        for state in self.state_space:
+            q_values = np.zeros(self.Na)
+            for e, action in enumerate(self.action_space):
+                probs, next_states, rewards = self.get_all_data(state, action, pe)
+                for i in range(len(probs)):
+                    q_values[e] += probs[i] * (rewards[i] + gamma * vf[si(next_states[i])])
+            new_policy[si(state)] = self.action_space[np.argmax(q_values)]
+        assert None not in new_policy
+        return new_policy
+
+    # Problem 3(g)
+    def policy_iterate(self, pe, gamma=0.9, tol=0.0001):
+        init_pol = init_policy(self.state_space)
+        vf = self.evaluate_policy(init_pol, pe, gamma, tol)
+        old_vf = vf.copy()
+        while True:
+            new_policy = self.improve_policy(vf, pe, gamma)
+            vf = self.evaluate_policy(new_policy, pe, gamma, tol)
+            if np.all(np.abs(vf - old_vf) < tol):
+                output = (np.round(vf, 3))
+                output = output.reshape(8, 8, 12)
+                print(output.shape)
+                for i in range(12):
+                    print("------------------------- Rotation = {} ---------------------------------".format(i))
+                    print(np.flip(np.swapaxes(output[:, :, i], 0, 1), 0))
+                break
+            old_vf = vf.copy()
+        optimal_policy, optimal_vf = new_policy, vf
+        return optimal_policy, optimal_vf
 
     # 4. VALUE ITERATION
-    def value_iterate(self, pe, tol=0.0001):
+    # Problem 4(a)
+    def value_iterate(self, pe, gamma=0.9, tol=0.0001):
         vf = np.zeros(self.Ns)
         new_vf = np.zeros(self.Ns)
         while True:
@@ -208,9 +257,8 @@ class GridWorld:
                 for e, action in enumerate(self.action_space):
                     probs, next_states, rewards = self.get_all_data(state, action, pe)
                     for i in range(len(probs)):
-                        q_values[e] += probs[i] * (rewards[i] + self.gamma * vf[si(next_states[i])]) 
+                        q_values[e] += probs[i] * (rewards[i] + gamma * vf[si(next_states[i])])
                 new_vf[si(state)] = np.amax(q_values)
-
 
             if np.all(np.abs(vf - new_vf) < tol):
                 output = (np.round(new_vf, 3))
@@ -221,19 +269,42 @@ class GridWorld:
                     print(np.flip(np.swapaxes(output[:, :, i], 0, 1), 0))
                 break
 
-
             vf = new_vf.copy()
-
-
+        optimal_vf = vf
+        optimal_policy = self.improve_policy(optimal_vf, pe, gamma)
+        return optimal_policy, optimal_vf
 
 def main():
-    test = GridWorld()
-    test.generate_trajectory((1, 6, 6), init_policy(test.state_space), 0)
+    # Input error probability:
+    pe = 0.25
+
+    env = GridWorld()
+    init_pol = init_policy(env.state_space)
+    init_state = (1, 6, 6)
+    env.generate_trajectory(init_state, policy=init_pol, pe=pe)
+    # plt.show()
+
+    # Problem 3(e)
+    init_policy_vf = env.evaluate_policy(init_pol, pe=pe)
+
+    # Problem 3(h)
+    start = time.time()
+    pi_pol, pi_vf = env.policy_iterate(pe=pe)
+    env.generate_trajectory(init_state, policy=pi_pol, pe=0)
+    end = time.time()
+    # plt.show()
+
+    # Problem 3(i)
+    print("Policy Iteration took {} seconds.".format(np.round(end-start, 3)))
+
+    # Problem 4(b)
+    start = time.time()
+    vi_pol, vi_vf = env.value_iterate(pe=pe)
+    env.generate_trajectory(init_state, policy=vi_pol, pe=pe)
+    end = time.time()
+    print("Value Iteration took {} seconds.".format(np.round(end-start, 3)))
+
     plt.show()
-
-    # test.value_iterate(pe=0)
-    print("bp")
-
 
 if __name__ == "__main__":
     main()
