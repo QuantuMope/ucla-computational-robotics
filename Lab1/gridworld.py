@@ -19,14 +19,13 @@ class GridWorld:
         self.width = GRID_WIDTH
         self.height = GRID_HEIGHT
 
-        # Problem 1(a)
         self.state_space, self.Ns = self.init_state_space()
 
-        # Problem 1(b)
         self.action_space, self.Na = self.init_action_space()
 
         self.reward_space = self.init_rewards()
 
+    # Problem 1(a)
     def init_state_space(self):
         """
         Initializes the state space according to grid width
@@ -49,6 +48,7 @@ class GridWorld:
         Ns = len(state_space)
         return state_space, Ns
 
+    # Problem 1(b)
     def init_action_space(self):
         """
         Initializes the action space.
@@ -172,35 +172,52 @@ class GridWorld:
     # 3. POLICY ITERATION
 
     # Problem 3(b) and 3(c)
-    def generate_trajectory(self, initial_state, policy, pe):
+    def generate_trajectory(self, initial_state, policy, pe, vi_or_pi):
+        if vi_or_pi not in ["vi", "pi", "ip"]:
+            raise ValueError("vi_or_pi should either be string vi, pi, or ip")
+        if vi_or_pi is "ip":
+            method = "initial policy"
+        elif vi_or_pi is "vi":
+            method = "value iteration"
+        else:
+            method = "policy iteration"
+
         fig, ax = plt.subplots(figsize=(self.width, self.height))
         ax.grid(color='black')
         plt.xlabel("X")
         plt.ylabel("Y")
-        plt.title("Robot Trajectory")
+        plt.title("Robot Trajectory with pe={} using {}".format(pe, method))
         plt.xlim((0, self.width))
         plt.ylim((0, self.height))
         Y = self.height-1
         X = self.width-1
-        
+
+        # Create red rectangles resembling grid locations with -100 reward.
         bottom = plt.Rectangle((0, 0), self.width, 1, color='red')
         top = plt.Rectangle((0, Y), self.width, 1, color='red')
         left = plt.Rectangle((0, 0), 1, self.height, color='red')
         right = plt.Rectangle((X, 0), 1, self.height, color='red')
         ax.add_patch(bottom), ax.add_patch(top), ax.add_patch(left), ax.add_patch(right)
+        # Add an X marker at each -100 reward location.
         for x in range(self.width):
             for y in range(self.height):
                 if x != 0 and x != X and y != 0 and y != Y:
                     continue
                 plt.plot(x+0.5, y+0.5, markersize=20, marker='x', color='black')
 
+        # Create yellow rectangle resembling grid locations with -10 reward.
         barrier = plt.Rectangle((3, 4), 1, 3, color='yellow')
+        # Add a - marker at each -10 reward location.
         for y in range(4, 7):
             plt.plot(3.5, y+0.5, markersize=20, marker='_', color='black')
+
+        # Create a green square with a star marker for the goal location with +1 reward.
         goal = plt.Rectangle((5, 6), 1, 1, color='lime')
         plt.plot(5.5, 6.5, markersize=20, marker='*', color='black')
         ax.add_patch(barrier), ax.add_patch(goal)
 
+        # Generate a trajectory following the given policy and obeying the
+        # error probability.
         trajectory = []
         curr_state = initial_state
         while True:
@@ -210,6 +227,7 @@ class GridWorld:
                 break
             curr_state = self.get_new_state(curr_state, action, pe)
 
+        # Plot the trajectory.
         old_x, old_y = trajectory[0][0]+0.5, trajectory[0][1]+0.5
         for i, state in enumerate(trajectory):
             x = state[0] + 0.5
@@ -307,7 +325,7 @@ def main():
     env = GridWorld()
     init_pol = init_policy(env.state_space)
     init_state = (1, 6, 6)
-    env.generate_trajectory(init_state, policy=init_pol, pe=pe)
+    env.generate_trajectory(init_state, policy=init_pol, pe=pe, vi_or_pi="ip")
     # plt.show()
 
     # Problem 3(e)
@@ -316,7 +334,7 @@ def main():
     # Problem 3(h)
     start = time.time()
     pi_pol, pi_vf = env.policy_iterate(pe=pe)
-    env.generate_trajectory(init_state, policy=pi_pol, pe=0)
+    env.generate_trajectory(init_state, policy=pi_pol, pe=0, vi_or_pi="pi")
     end = time.time()
     # plt.show()
 
@@ -326,7 +344,7 @@ def main():
     # Problem 4(b)
     start = time.time()
     vi_pol, vi_vf = env.value_iterate(pe=pe)
-    env.generate_trajectory(init_state, policy=vi_pol, pe=pe)
+    env.generate_trajectory(init_state, policy=vi_pol, pe=pe, vi_or_pi="vi")
     end = time.time()
     print("Value Iteration took {} seconds.".format(np.round(end-start, 3)))
 
