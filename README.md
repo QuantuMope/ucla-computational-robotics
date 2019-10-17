@@ -3,6 +3,7 @@
 ---
 @ UCLA, Fall 2019 <br>
 @Instructor: [Ankur Mehta](https://uclalemur.com/people/ankur-mehta)
+
 ---
 Graduate level intro class to foundational topics in computional robotics.
 
