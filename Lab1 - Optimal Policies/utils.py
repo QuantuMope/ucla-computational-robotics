@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def si(state):
     """
     Helper function that converts state tuples to
@@ -158,3 +161,20 @@ def init_policy(state_space):
     assert None not in policy
 
     return policy
+
+
+def display_rewards(reward_space):
+    """
+    Helper function to graphically view the rewards
+    by x, y state using print function. Used to check
+    that rewards were properly assigned to the correct
+    states.
+
+    :param reward_space: numpy matrix of
+                         environment reward space
+    """
+    # Some axis readjustment due to differences in
+    # numpy's matrix and our gridworld origin.
+    rs = np.swapaxes(reward_space, 0, 1)
+    rs = np.flip(rs, 0)
+    print(rs)

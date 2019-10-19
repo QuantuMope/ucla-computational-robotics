@@ -79,6 +79,15 @@ class GridWorld:
         return action_space, Na
 
     def init_rewards(self):
+        """
+        Initializes the rewards.
+
+        As rewards are only dependent on the x and y
+        coordinates, rewards are represented as an 8x8
+        2D matrix.
+
+        :return:
+        """
         rs = np.zeros((self.width, self.height))
         rs[0][:] = -100
         rs[7][:] = -100
@@ -88,13 +97,15 @@ class GridWorld:
         rs[5][6] = 1
         return rs
 
-    def display_rewards(self):
-        rs = np.swapaxes(self.reward_space, 0, 1)
-        rs = np.flip(rs, 0)
-        print(rs)
 
     # Problem 2(a)
     def get_reward(self, state):
+        """
+        Simply returns the reward value at a certain state.
+
+        :param state:
+        :return: reward value
+        """
         return self.reward_space[state[0], state[1]]
 
     def get_all_prob(self, state, action, pe):
@@ -102,9 +113,10 @@ class GridWorld:
 
         :param state:
         :param action:
-        :return: dictionary containing ...
-                keys: all possible next_states, (x', y', r')
-                prob: transition prob of next_state, Psa(s')
+        :param pe: error probability ranging from
+        :return: dictionary containing {s : p}
+                 keys: all possible next_states, (x', y', r')
+                 values: transition prob of next_state, Psa(s')
         """
         probabilities = {}
         if action[0] == 0:
@@ -120,12 +132,14 @@ class GridWorld:
                 else:
                     probabilities[new_s] = err_prob
 
-        assert abs(sum(probabilities.values()) - 1) < 0.001
+        # Check to make sure probabilities sum up to 1.
+        assert abs(sum(probabilities.values()) - 1) < 0.0001
         return probabilities
 
     # Problem 1(c)
     def get_prob(self, state, action, next_state, pe):
         """
+
 
         :param state:
         :param action:
@@ -159,11 +173,28 @@ class GridWorld:
                 return state
 
     def get_all_data(self, state, action, pe):
-        probabilities = self.get_all_prob(state, action, pe)
+        """
+        Helper function that neatly returns three lists
+        containing the possible next states and their
+        respective probabilities and rewards.
+
+        :param state: starting state tuple (x, y, r)
+        :param action: action tuple (move, rotate)
+        :param pe: error probability
+
+        Each next state's probability and reward are
+        all linked by the same index in their own
+        respective lists.
+
+        :return probs: list of probabilities for next states
+        :return next_states: list of possible next states
+        :return rewards: list of rewards for next states
+        """
+        all_possible_states = self.get_all_prob(state, action, pe)
         probs = []
         next_states = []
         rewards = []
-        for ns, pr in probabilities.items():
+        for ns, pr in all_possible_states.items():
             probs.append(pr)
             next_states.append(ns)
             rewards.append(self.get_reward(ns))
@@ -173,6 +204,30 @@ class GridWorld:
 
     # Problem 3(b) and 3(c)
     def generate_trajectory(self, initial_state, policy, pe, vi_or_pi):
+        """
+        Function generates a trajectory following a provided policy
+        starting at a provided initial state. Trajectory becomes
+        stochastic given an error probability > 0.
+
+        Trajectory is then plotted onto a grid representing the 8x8 gridworld.
+        A black circle represents the robot with an arrow pointing out of its
+        center representing its current heading value. A green dash line
+        outlines the trajectory with numbers declaring the discrete time step
+        that the position was encountered in.
+
+        :param initial_state: starting state tuple (x, y, r)
+        :param policy: numpy array mapping states to actions
+        :param pe: error probability
+        :param vi_or_pi: String value indicating method used to generate
+                         the provided policy. Used to determine the proper
+                         heading for trajectory plot. Values should either be
+                         "vi" for value iteration,
+                         "pi" for policy iteration, or
+                         "ip" for initial policy
+        :return trajectory: array containing all experienced states
+        """
+
+        # Translate vi_or_pi input into the proper method.
         if vi_or_pi not in ["vi", "pi", "ip"]:
             raise ValueError("vi_or_pi should either be string vi, pi, or ip")
         if vi_or_pi is "ip":
@@ -182,6 +237,7 @@ class GridWorld:
         else:
             method = "policy iteration"
 
+        # Declare base parameters of the gridworld plot.
         fig, ax = plt.subplots(figsize=(self.width, self.height))
         ax.grid(color='black')
         plt.xlabel("X")
@@ -192,7 +248,7 @@ class GridWorld:
         Y = self.height-1
         X = self.width-1
 
-        # Create red rectangles resembling grid locations with -100 reward.
+        # Generate red rectangles resembling grid locations with -100 reward.
         bottom = plt.Rectangle((0, 0), self.width, 1, color='red')
         top = plt.Rectangle((0, Y), self.width, 1, color='red')
         left = plt.Rectangle((0, 0), 1, self.height, color='red')
@@ -205,7 +261,7 @@ class GridWorld:
                     continue
                 plt.plot(x+0.5, y+0.5, markersize=20, marker='x', color='black')
 
-        # Create yellow rectangle resembling grid locations with -10 reward.
+        # Create a yellow rectangle resembling grid locations with -10 reward.
         barrier = plt.Rectangle((3, 4), 1, 3, color='yellow')
         # Add a - marker at each -10 reward location.
         for y in range(4, 7):
@@ -216,15 +272,16 @@ class GridWorld:
         plt.plot(5.5, 6.5, markersize=20, marker='*', color='black')
         ax.add_patch(barrier), ax.add_patch(goal)
 
-        # Generate a trajectory following the given policy and obeying the
-        # error probability.
+        # Generate a trajectory array following the provided policy.
         trajectory = []
         curr_state = initial_state
         while True:
             trajectory.append(curr_state)
             action = policy[si(curr_state)]
+            # End trajectory if goal state is reached.
             if action == (0, 0):
                 break
+            # Generates a next state stochastically with provided error probability.
             curr_state = self.get_new_state(curr_state, action, pe)
 
         # Plot the trajectory.
@@ -234,15 +291,32 @@ class GridWorld:
             y = state[1] + 0.5
             dx = np.sin((2*np.pi)*(state[2]*30/360)) * 0.5
             dy = np.cos((2*np.pi)*(state[2]*30/360)) * 0.5
+            # Represent robot as a black circle.
             plt.plot(x, y, marker='o', markersize=10, color='black')
-            plt.arrow(x, y, old_x-x, old_y-y, linestyle=':', width=0.015, color='forestgreen')
+            # Represent robot heading as an arrow.
             plt.arrow(x, y, dx, dy, head_width=0.05, color='black')
+            # Plot trajectory as green dashed line and label each discrete time step.
+            plt.arrow(x, y, old_x-x, old_y-y, linestyle=':', width=0.015, color='forestgreen')
             plt.text(x+dx, y+dy, str(i), fontsize=12)
             old_x = x
             old_y = y
 
+        return trajectory
+
     # Problem 3(d)
     def evaluate_policy(self, policy, pe, gamma=0.9, tol=0.0001):
+        """
+        Part 1 of Policy Iteration: Policy Evaluation
+
+        Generates the value function for a provided policy with
+        the provided error probability and discount factor.
+
+        :param policy: numpy array mapping states to actions
+        :param pe: error probability
+        :param gamma: discount factor
+        :param tol: tolerance value used to dictate when policy evaluation ends
+        :return new_vf: value function for the provided policy
+        """
         vf = np.zeros(self.Ns)
 
         while True:
@@ -250,7 +324,11 @@ class GridWorld:
             for state in self.state_space:
                 probs, next_states, rewards = self.get_all_data(state, policy[si(state)], pe)
                 for i in range(len(probs)):
+                    # Assign the expected sum of discounted rewards to each state.
                     new_vf[si(state)] += probs[i] * (rewards[i] + gamma * vf[si(next_states[i])])
+
+            # End policy evaluation if old value function differs from the new value function
+            # by less than a provided tolerance for all states.
             if np.all(np.abs(vf - new_vf) < tol):
                 break
             vf = new_vf.copy()
@@ -259,19 +337,45 @@ class GridWorld:
 
     # Problem 3(f)
     def improve_policy(self, vf, pe, gamma=0.9):
+        """
+        Part 2 of Policy Iteration: Policy Improvement
+
+        Using the value function of the previous policy,
+        generate a new and improved policy.
+
+        :param vf: value function of previous policy
+        :param pe: error probability
+        :param gamma: discount factor
+        :return new_policy: an improved policy
+        """
         new_policy = [None]*self.Ns
         for state in self.state_space:
             q_values = np.zeros(self.Na)
             for e, action in enumerate(self.action_space):
                 probs, next_states, rewards = self.get_all_data(state, action, pe)
                 for i in range(len(probs)):
+                    # Generate the Q values for each action.
                     q_values[e] += probs[i] * (rewards[i] + gamma * vf[si(next_states[i])])
+            # Assign the argmax of the Q values (i.e. best action) to the new policy.
             new_policy[si(state)] = self.action_space[np.argmax(q_values)]
+
+        # Make sure all states are assigned an action.
         assert None not in new_policy
         return new_policy
 
     # Problem 3(g)
     def policy_iterate(self, pe, gamma=0.9, tol=0.0001):
+        """
+        Uses functions policy_eval and improve_policy to
+        employ policy iteration.
+
+        :param pe: error probability
+        :param gamma: discount factor
+        :param tol:
+        :return optimal_policy: numpy array that contains a optimal
+                                action for each state
+        :return optimal_vf: the optimal value function
+        """
         init_pol = init_policy(self.state_space)
         vf = self.evaluate_policy(init_pol, pe, gamma, tol)
         old_vf = vf.copy()
@@ -334,7 +438,7 @@ def main():
     # Problem 3(h)
     start = time.time()
     pi_pol, pi_vf = env.policy_iterate(pe=pe)
-    env.generate_trajectory(init_state, policy=pi_pol, pe=0, vi_or_pi="pi")
+    pi_traj = env.generate_trajectory(init_state, policy=pi_pol, pe=0, vi_or_pi="pi")
     end = time.time()
     # plt.show()
 
@@ -344,7 +448,7 @@ def main():
     # Problem 4(b)
     start = time.time()
     vi_pol, vi_vf = env.value_iterate(pe=pe)
-    env.generate_trajectory(init_state, policy=vi_pol, pe=pe, vi_or_pi="vi")
+    vi_traj = env.generate_trajectory(init_state, policy=vi_pol, pe=pe, vi_or_pi="vi")
     end = time.time()
     print("Value Iteration took {} seconds.".format(np.round(end-start, 3)))
 
