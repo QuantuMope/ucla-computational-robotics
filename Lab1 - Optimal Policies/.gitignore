@@ -1,4 +1,4 @@
-lab1_writeup.log
-lab1_writeup.synctex.gz
-lab1_writeup.tex
+*.log
+*.synctex.gz
+*.tex
 images/
