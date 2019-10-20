@@ -20,17 +20,17 @@ navigation.
     --- Policy Iteration -------
       3(a)   |     63, code can be found in utils.py
       3(b)   |    259
-      3(c)   |    536
+      3(c)   |    538
       3(d)   |    361
-      3(e)   |    541
+      3(e)   |    543
       3(f)   |    395
       3(g)   |    423
-      3(h)   |    544
-      3(i)   |    544
+      3(h)   |    552
+      3(i)   |    552
     --- Value Iteration --------
       4(a)   |    460
-      4(b)   |    553
-      4(c)   |    553
+      4(b)   |    561
+      4(c)   |    561
     --- Additional Scenarios ---
 
     All additional scenarios can be
@@ -519,6 +519,8 @@ def main():
     scenario = "12"
     runs = 1
     generate_traj = True
+    show_init_policy_vf = False
+    show_vi_pi_vf = False
     # ====================================================================================
 
     # Note: Nothing below this should be touched!
@@ -538,12 +540,18 @@ def main():
         if generate_traj:
             env.generate_trajectory(init_state, policy=init_pol, pe=pe, vi_or_pi="ip")
 
-        # Problem 3(e)
-        init_policy_vf = env.evaluate_policy(init_pol, pe=pe)
+        # Problem 3(e): value found can be found in data/init_pol_pe0_vf.txt
+        if show_init_policy_vf:
+            init_policy_vf = env.evaluate_policy(init_pol, pe=pe)
+            init_policy_vf = (np.round(init_policy_vf, 3))
+            init_policy_vf = init_policy_vf.reshape(8, 8, 12)
+            for i in range(12):
+                print("------------------------- Rotation = {} ---------------------------------".format(i))
+                print(np.flip(np.swapaxes(init_policy_vf[:, :, i], 0, 1), 0))
 
         # Problem 3(h) and 3(i)
         start = time.time()
-        pi_pol, pi_vf = env.policy_iterate(pe=pe)
+        pi_pol, pi_vf = env.policy_iterate(pe=pe, print_vf=show_vi_pi_vf)
         end = time.time()
         print("Policy Iteration took {} seconds.".format(np.round(end-start, 3)))
         pi_times.append(end-start)
@@ -552,7 +560,7 @@ def main():
 
         # Problem 4(b) and 4(c)
         start = time.time()
-        vi_pol, vi_vf = env.value_iterate(pe=pe)
+        vi_pol, vi_vf = env.value_iterate(pe=pe, print_vf=show_vi_pi_vf)
         end = time.time()
         print("Value Iteration took {} seconds.".format(np.round(end-start, 3)))
         vi_times.append(end-start)
