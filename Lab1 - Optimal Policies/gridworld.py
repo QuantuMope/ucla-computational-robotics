@@ -3,35 +3,54 @@ import matplotlib.pyplot as plt
 import time
 from utils import si, new_state, get_error_states, init_policy
 
+
+"""
+Due to using a class for the grid world, some problems are out
+of order. Below is a mapping of problems to code lines for easier
+navigation.
+
+    Problem  |  Code Line
+    ------ MDP System ---------
+      1(a)   |     66
+      1(b)   |     89
+      1(c)   |    187
+      1(d)   |    207
+    --- Planning Problem -------
+      2(a)   |    146
+    --- Policy Iteration -------
+      3(a)   |     63, code can be found in utils.py
+      3(b)   |    259
+      3(c)   |    536
+      3(d)   |    361
+      3(e)   |    541
+      3(f)   |    395
+      3(g)   |    423
+      3(h)   |    544
+      3(i)   |    544
+    --- Value Iteration --------
+      4(a)   |    460
+      4(b)   |    553
+      4(c)   |    553
+    --- Additional Scenarios ---
+
+    All additional scenarios can be
+    simulated using param interface in
+    main function below.
+           
+"""
+
+
 ROTATION_SIZE = 12
-ACTION_SIZE = 7
 GRID_WIDTH = 8
 GRID_HEIGHT = 8
 
-"""
-Due to using a class as the grid world, some problems are out
-of order. Below is a mapping of problems to code lines for easy
-navigation.
-
-Problem  |  Code Line
-  1(a)         
-
-
-
-"""
-
-
 class GridWorld:
     """
-        Class capable of simulating an MDP system.
-        Creates an 8x8 grid world.
+        MDP System:
+        8x8 Gridworld for Robot Path Planning
     """
 
     def __init__(self, scenario):
-        """
-
-        :param scenario:
-        """
         self.width = GRID_WIDTH
         self.height = GRID_HEIGHT
 
@@ -41,16 +60,19 @@ class GridWorld:
 
         self.reward_space = self.init_rewards(scenario)
 
-    # Problem 1(a)
+        # Problem 3(a)
+        self.initial_policy = init_policy(self.state_space)
+
+    # Problem 1(a): Ns = 768
     def init_state_space(self):
         """
         Initializes the state space according to grid width
         grid height, and possible rotational orientations.
 
-        States are represented as tuples (x, y, r) where
+        States are represented as tuples (x, y, h) where
         x = x-position ranging from (0-7)
         y = y-position ranging from (0-7)
-        r = rotational orientation ranging from (0-11)
+        h = rotational orientation ranging from (0-11)
 
         :return state_space: array containing each possible
                              state for the mdp system
@@ -59,12 +81,12 @@ class GridWorld:
         state_space = []
         for x in range(self.width):
             for y in range(self.height):
-                for r in range(ROTATION_SIZE):
-                    state_space.append((x, y, r))
+                for h in range(ROTATION_SIZE):
+                    state_space.append((x, y, h))
         Ns = len(state_space)
         return state_space, Ns
 
-    # Problem 1(b)
+    # Problem 1(b): Na = 7
     def init_action_space(self):
         """
         Initializes the action space.
@@ -88,6 +110,7 @@ class GridWorld:
         action_space = []
         for move in range(-1, 2):
             for rotate in range(-1, 2):
+                # Ignore invalid actions
                 if move == 0 and rotate != 0:
                     continue
                 action_space.append((move, rotate))
@@ -99,11 +122,11 @@ class GridWorld:
         Initializes the rewards for the environment.
 
         :param scenario: string input to identify which
-                         state(s) should become the goal
-                         state(s)
-        :return rs: numpy matrix storing the proper reward
-                    for each state in the environment's state
-                    space
+                         state(s) should have a reward
+                         of +1
+        :return rs: 8x8x12 numpy matrix storing the proper
+                    reward for each state in the environment's
+                    state space
         """
         if scenario is not "12" and scenario is not "34":
             raise ValueError("Invalid scenario input. Scenario should be string '12' or '34'.")
@@ -113,32 +136,35 @@ class GridWorld:
         rs[:, 0][:] = -100
         rs[:, 7][:] = -100
         rs[3, 4:7][:] = -10
+        # Set reward of +1 depending on test scenario
         if scenario == "12":
             rs[5][6][:] = 1
         elif scenario == "34":
             rs[5][6][6] = 1
         return rs
 
-
     # Problem 2(a)
     def get_reward(self, state):
         """
         Simply returns the reward value at a certain state.
 
-        :param state:
-        :return: reward value
+        :param state: state tuple (x, y, h)
+        :return: reward value at state
         """
         return self.reward_space[state[0], state[1], state[2]]
 
     def get_all_prob(self, state, action, pe):
         """
+        Helper function that returns a dictionary containing
+        all possible next states and their respective probabilities
+        of occurrence.
 
-        :param state:
-        :param action:
-        :param pe: error probability ranging from
-        :return: dictionary containing {s : p}
-                 keys: all possible next_states, (x', y', r')
-                 values: transition prob of next_state, Psa(s')
+        :param state: current state
+        :param action: action taken at current state
+        :param pe: error probability
+        :return probabilities: dictionary containing {s : p}
+                               keys: all possible next_states, (x', y', h')
+                               values: transition prob of next_state, Psa(s')
         """
         probabilities = {}
         if action[0] == 0:
@@ -161,13 +187,16 @@ class GridWorld:
     # Problem 1(c)
     def get_prob(self, state, action, next_state, pe):
         """
+        Gets the probability of ending up in a certain
+        state s' when starting at state s and taking
+        action a.
 
-
-        :param state:
-        :param action:
-        :param next_state:
-        :param pe:
-        :return:
+        :param state: current state tuple (x, y, h)
+        :param action: action tuple (move, rotate)
+        :param next_state: the desired state in which
+                           a probability is wanted
+        :param pe: error probability
+        :return: probability of ending up in next_state
         """
         probabilities = self.get_all_prob(state, action, pe)
         try:
@@ -178,19 +207,24 @@ class GridWorld:
     # Problem 1(d)
     def get_new_state(self, state, action, pe):
         """
+        Samples a next state s' according to the probability
+        distribution provided by the following parameters.
 
-        :param state:
-        :param action:
-        :param pe:
-        :return next_state:
+        :param state: current state tuple (x, y, h)
+        :param action: action tuple (move, rotate)
+        :param pe: error probability
+        :return next_state: sampled next state tuple (x', y', h')
         """
         probabilities = self.get_all_prob(state, action, pe)
         prob_cutoffs = [0]
+        # Uniformly sample [0, 1]
         random_prob = np.random.uniform()
         i = 0
         for state, prob in probabilities.items():
             prob_cutoffs.append(prob+prob_cutoffs[i])
             i += 1
+            # Return a state depending on where random_prob
+            # falls between the provided probabilities
             if random_prob < prob_cutoffs[i]:
                 return state
 
@@ -200,7 +234,7 @@ class GridWorld:
         containing the possible next states and their
         respective probabilities and rewards.
 
-        :param state: starting state tuple (x, y, r)
+        :param state: starting state tuple (x, y, h)
         :param action: action tuple (move, rotate)
         :param pe: error probability
 
@@ -222,22 +256,21 @@ class GridWorld:
             rewards.append(self.get_reward(ns))
         return probs, next_states, rewards
 
-    # 3. POLICY ITERATION
-
-    # Problem 3(b) and 3(c)
+    # Problem 3(b)
     def generate_trajectory(self, initial_state, policy, pe, vi_or_pi):
         """
-        Function generates a trajectory following a provided policy
-        starting at a provided initial state. Trajectory becomes
-        stochastic given an error probability > 0.
+        Generates a trajectory following a provided policy
+        starting at a provided initial state. Trajectory
+        becomes stochastic given an error probability > 0.
 
-        Trajectory is then plotted onto a grid representing the 8x8 gridworld.
-        A black circle represents the robot with an arrow pointing out of its
-        center representing its current heading value. A green dash line
-        outlines the trajectory with numbers declaring the discrete time step
-        that the position was encountered in.
+        Trajectory is then plotted onto a grid representing
+        the 8x8 gridworld. A black circle represents the robot
+        with an arrow pointing out of its center representing
+        its current heading value. A green dash line outlines
+        the trajectory with numbers declaring the discrete time
+        step that the state was encountered in.
 
-        :param initial_state: starting state tuple (x, y, r)
+        :param initial_state: starting state tuple (x, y, h)
         :param policy: numpy array mapping states to actions
         :param pe: error probability
         :param vi_or_pi: String value indicating method used to generate
@@ -344,6 +377,8 @@ class GridWorld:
         while True:
             new_vf = np.zeros(self.Ns)
             for state in self.state_space:
+                # Get the probabilities and rewards for all possible next states when
+                # taking action a ~ policy
                 probs, next_states, rewards = self.get_all_data(state, policy[si(state)], pe)
                 for i in range(len(probs)):
                     # Assign the expected sum of discounted rewards to each state.
@@ -393,20 +428,25 @@ class GridWorld:
 
         :param pe: error probability
         :param gamma: discount factor
-        :param tol:
+        :param tol: tolerance value for detecting convergence
+        :param print_vf: bool that determines whether or not
+                         the optimal value function is printed
         :return optimal_policy: numpy array that contains a optimal
                                 action for each state
         :return optimal_vf: the optimal value function
         """
-        init_pol = init_policy(self.state_space)
-        vf = self.evaluate_policy(init_pol, pe, gamma, tol)
+
+        # Starts off with the value function of the initial policy
+        vf = self.evaluate_policy(self.initial_policy, pe, gamma, tol)
         old_vf = vf.copy()
         while True:
             new_policy = self.improve_policy(vf, pe, gamma)
             vf = self.evaluate_policy(new_policy, pe, gamma, tol)
-
+            # End loop if optimal value function has been converged.
             if np.all(np.abs(vf - old_vf) < tol):
                 if print_vf:
+                    # Reshape output due to difference with gridworld
+                    # and numpy matrix origin reference.
                     output = (np.round(vf, 3))
                     output = output.reshape(8, 8, 12)
                     for i in range(12):
@@ -417,9 +457,21 @@ class GridWorld:
         optimal_policy, optimal_vf = new_policy, vf
         return optimal_policy, optimal_vf
 
-    # 4. VALUE ITERATION
     # Problem 4(a)
     def value_iterate(self, pe, gamma=0.9, tol=0.0001, print_vf=False):
+        """
+
+        :param pe: error probability
+        :param gamma: discount factor
+        :param tol: tolerance value for detecting convergence
+        :param print_vf: bool that determines whether or not
+                         the optimal value function is printed
+        :return optimal_policy: numpy array that contains a optimal
+                                action for each state
+        :return optimal_vf: the optimal value function
+        """
+
+        # Initialize value function to zero for all states.
         vf = np.zeros(self.Ns)
         new_vf = np.zeros(self.Ns)
         while True:
@@ -430,9 +482,11 @@ class GridWorld:
                     for i in range(len(probs)):
                         q_values[e] += probs[i] * (rewards[i] + gamma * vf[si(next_states[i])])
                 new_vf[si(state)] = np.amax(q_values)
-
+            # End loop if optimal value function has been converged.
             if np.all(np.abs(vf - new_vf) < tol):
                 if print_vf:
+                    # Reshape output due to difference with gridworld
+                    # and numpy matrix origin reference.
                     output = (np.round(new_vf, 3))
                     output = output.reshape(8, 8, 12)
                     for i in range(12):
@@ -441,20 +495,30 @@ class GridWorld:
                 break
             vf = new_vf.copy()
         optimal_vf = vf
+        # Derive the optimal policy from the optimal value function.
         optimal_policy = self.improve_policy(optimal_vf, pe, gamma)
         return optimal_policy, optimal_vf
+
 
 def main():
     # =============================== PARAM INTERFACE ====================================
     """
         Simple interface to simulate trajectories.
-        pe {0... 0.5}
-        scenario {"12", "34}
+        pe: {0... 0.5}
+        scenario: {'12', '34'}
+        generate_traj: to see plots of trajectories
+        runs: for computational time averaging, should
+              be ran with generate_traj set to False
+
+        Scenario 1: pe=0,    scenario='12'    reward independent of h
+        Scenario 2: pe=0.25, scenario='12'    reward independent of h
+        Scenario 3: pe=0,    scenario='34'    reward +1 only when h=6
+        Scenario 4: pe=0.25, scenario='34'    reward +1 only when h=6
     """
-    pe = 0.25
-    runs = 10
-    generate_traj = False
-    scenario = "34"
+    pe = 0
+    scenario = "12"
+    runs = 1
+    generate_traj = True
     # ====================================================================================
 
     # Note: Nothing below this should be touched!
@@ -467,11 +531,12 @@ def main():
     for i in range(runs):
 
         env = GridWorld(scenario)
-        init_pol = init_policy(env.state_space)
         init_state = (1, 6, 6)
+
+        # Problem 3(c)
+        init_pol = init_policy(env.state_space)
         if generate_traj:
             env.generate_trajectory(init_state, policy=init_pol, pe=pe, vi_or_pi="ip")
-        # plt.show()
 
         # Problem 3(e)
         init_policy_vf = env.evaluate_policy(init_pol, pe=pe)
@@ -484,9 +549,8 @@ def main():
         pi_times.append(end-start)
         if generate_traj:
             pi_traj = env.generate_trajectory(init_state, policy=pi_pol, pe=pe, vi_or_pi="pi")
-        # plt.show()
 
-        # Problem 4(b)
+        # Problem 4(b) and 4(c)
         start = time.time()
         vi_pol, vi_vf = env.value_iterate(pe=pe)
         end = time.time()
@@ -502,6 +566,7 @@ def main():
 
     if generate_traj:
         plt.show()
+
 
 if __name__ == "__main__":
     main()

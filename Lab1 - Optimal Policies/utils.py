@@ -1,12 +1,17 @@
 import numpy as np
 
+"""
+    Contains various helper functions for main
+    functions in gridworld.py
+"""
+
 
 def si(state):
     """
     Helper function that converts state tuples to
     indexes for proper indexing of the state space.
 
-    :param state: state tuple consisting of (x, y, r)
+    :param state: state tuple consisting of (x, y, h)
     :return: index of the state in the state space
     """
     return state[2] + 12 * state[1] + 96 * state[0]
@@ -17,7 +22,7 @@ def get_error_states(state, pe):
     Helper function that outputs a list of possible
     states due to a given error probability.
 
-    :param state: initial state tuple (x, y, r)
+    :param state: initial state tuple (x, y, h)
     :param pe: error probability
     :return: list of tuples for each possible error
              state [(state tuple, probability of occurrence)]
@@ -35,9 +40,9 @@ def new_state(state, action):
     Helper function that outputs the resultant
     state given an initial state and action taken.
 
-    :param state: initial state tuple (x, y, r)
+    :param state: initial state tuple (x, y, h)
     :param action: action tuple (move, rotate)
-    :return new_s: resultant state tuple (x', y', r')
+    :return new_s: resultant state tuple (x', y', h')
     """
     r = state[2]
     pos = [state[0], state[1]]
@@ -62,9 +67,9 @@ def new_state(state, action):
 
 def check_map_edge(new_pos):
     """
-    Helper function for new_state that checks whether or not
-    movement from current action causes robot to go off the
-    grid or not.
+    Helper function for new_state that checks whether
+    or not movement from current action causes robot
+    to go off the grid or not.
 
     :param new_pos: proposed new position tuple (x, y)
     :return: bool value that is false if robot went off grid
@@ -78,12 +83,14 @@ def check_map_edge(new_pos):
 
 def rotate(orig_rot, rotate_change):
     """
-    Helper function for new_state that handles rotation changes.
-    Takes care of edge cases when transitioning from 11 to 0 or
-    vice-versa.
+    Helper function for new_state that handles rotation
+    changes. Takes care of edge cases when transitioning
+    from 11 to 0 or vice-versa.
 
-    :param orig_rot: original rotation value ranging from 0 to 11
-    :param rotate_change: direction of rotation change ranging from -1 to 1
+    :param orig_rot: original rotation value ranging
+                     from 0 to 11
+    :param rotate_change: direction of rotation change
+                          ranging from -1 to 1
     :return: new rotation value
     """
     if orig_rot < 0 or orig_rot > 11:
