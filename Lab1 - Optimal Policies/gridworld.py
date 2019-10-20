@@ -8,6 +8,18 @@ ACTION_SIZE = 7
 GRID_WIDTH = 8
 GRID_HEIGHT = 8
 
+"""
+Due to using a class as the grid world, some problems are out
+of order. Below is a mapping of problems to code lines for easy
+navigation.
+
+Problem  |  Code Line
+  1(a)         
+
+
+
+"""
+
 
 class GridWorld:
     """
@@ -440,8 +452,8 @@ def main():
         scenario {"12", "34}
     """
     pe = 0.25
-    runs = 1
-    generate_traj = True
+    runs = 10
+    generate_traj = False
     scenario = "34"
     # ====================================================================================
 
