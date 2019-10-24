@@ -13,8 +13,15 @@ def RPM_to_vel(rpm):
         raise ValueError("Invalid rpm. Range: -60 to 60")
     tire_circum = 2*np.pi*WHEEL_RADIUS
     rps = rpm/60
-    distance_per_sec = np.round(tire_circum * rps)
+    distance_per_sec = (tire_circum * rps)
     return distance_per_sec
+
+def add_angles(a, b):
+    if a+b > 360:
+        return a+b-360
+    elif a+b < 0:
+        return 360+(a+b)
+    return a+b
 
 class Robot:
     def __init__(self, start_x, start_y, start_theta, parking_plot):
@@ -26,13 +33,7 @@ class Robot:
         self.y = start_y
         self.theta = start_theta
         self.ax = parking_plot
-
-    def update_pos(self):
-        # work on transform
-        ts = self.ax.transData
-        tr = matplotlib.transforms.Affine2D().rotate_deg_around(self.x, self.y, self.theta)
-        t = tr + ts
-        pos = plt.Rectangle((self.x-45, self.y-75), self.width, self.length, color='magenta', transform=t)
+        pos = plt.Rectangle((self.x-45, self.y-75), self.width, self.length, fill=None, color='magenta')
         self.ax.plot(self.x, self.y, marker='o', color='blue')
         self.ax.add_patch(pos)
 
@@ -40,12 +41,20 @@ class Robot:
         left_vel = RPM_to_vel(left_rpm)
         right_vel = RPM_to_vel(right_rpm)
         central_vel = (left_vel + right_vel) / 2
-        dtheta = (self.wheel_rad/self.width) * (right_vel - left_vel)
-        dx = central_vel * np.sin(dtheta)
-        dy = central_vel * np.cos(dtheta)
+        dtheta = -(self.wheel_rad/self.width) * (right_vel - left_vel)
+        self.theta = add_angles(self.theta, dtheta)
+        dx = central_vel * np.sin(self.theta*2*np.pi/360)
+        dy = central_vel * np.cos(self.theta*2*np.pi/360)
+
         self.x += dx
         self.y += dy
-        self.theta += np.degrees(dtheta)
+        check = plt.Rectangle((self.x-45, self.y-75), self.width, self.length, fill=None, color='magenta')
+        ts = self.ax.transData
+        tr = matplotlib.transforms.Affine2D().rotate_deg_around(self.x, self.y, -dtheta)
+        t = tr + ts
+        check.set_transform(t)
+        self.ax.add_patch(check)
+        self.ax.plot(self.x, self.y, marker='o', color='blue')
 
 class ParkingLot:
     def __init__(self):
@@ -87,11 +96,8 @@ class ParkingLot:
 def main():
     env = ParkingLot()
     robot = Robot(500, 1000, 0, env.ax)
-    robot.update_pos()
-    robot.drive(60, -60)
-    robot.update_pos()
-    robot.drive(60, -60)
-    robot.update_pos()
+    robot.drive(60, 45)
+
 
     plt.show()
 
