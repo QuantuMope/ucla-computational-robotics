@@ -42,19 +42,19 @@ class RRT_Robot:
         self.length = ROBOT_LENGTH
         self.wheel_rad = WHEEL_RADIUS
 
-        self.curr_state = (self.x, self.y, self.theta)
         self.trajectory_ax = parking_plot[0]
         self.tree_ax = parking_plot[1]
 
         self.node_list = []
         self.config_space = []
 
-
-    def calculate_config_space(self, obstacles):
-        config_frame = plt.Rectangle((self.x-45, self.y-75), self.width, self.length)
+    def compute_config_space(self, obstacles):
+        center_x, center_y = 500, 500 # arbitrary values
+        config_frame = plt.Rectangle((center_x-45, center_y-75), self.width, self.length)
         ts = self.trajectory_ax.transData
         for theta in np.linspace(0, 360, 3600):
-            tr = Affine2D().rotate_deg_around(self.x, self.y, -theta)
+        # for theta in [0,45, 90, 135, 180]:
+            tr = Affine2D().rotate_deg_around(center_x, center_y, -theta)
             t = tr + ts
             config_frame.set_transform(t)
             x, y = config_frame.get_x(), config_frame.get_y()
@@ -65,7 +65,7 @@ class RRT_Robot:
                                 [x+self.width, y+self.length],
                                 [x+self.width, y]])
             corners = tr.transform(corners)
-            corner_to_center = np.round(corners - np.array([self.x, self.y])) * -1
+            corner_to_center = np.round(corners - np.array([center_x, center_y])) * -1
 
             a, b, c, d = 3, 0, 1, 2
             if 90 <= theta < 180:
@@ -102,15 +102,16 @@ class RRT_Robot:
         plt.title("Configuration Space")
         for theta, all_obstacles in enumerate(self.config_space):
             color = 'steelblue'
-            if theta % 20 == 0: color = 'black'
+            if theta % 10 == 0: color = 'black'
             for obstacle_verts in all_obstacles:
                 ax.add_collection3d(Poly3DCollection([obstacle_verts], edgecolors=color))
 
     # Question 2(a)
-    def find_nearest_node(self, sample_point):
-        shortest_dist = np.linalg.norm(self.RRT.get_xy() - sample_point)
+    def _find_nearest_node(self, sample_point):
+        root = self.node_list[0]
+        shortest_dist = np.linalg.norm(root.get_xy() - sample_point)
         min_index = 0
-        nearest_node = self.RRT
+        nearest_node = root
         for i, node in enumerate(self.node_list):
             dist = np.linalg.norm(node.get_xy() - sample_point)
             if dist < shortest_dist:
@@ -119,7 +120,7 @@ class RRT_Robot:
                 nearest_node = node
         return nearest_node, min_index
 
-    def drive(self, x, y, theta, left, right, dt=0.1):
+    def _drive(self, x, y, theta, left, right, dt=0.1):
         left_vel = utils.rpm_to_vel(left)
         right_vel = utils.rpm_to_vel(right)
         central_vel = (left_vel + right_vel) / 2
@@ -136,10 +137,10 @@ class RRT_Robot:
         t = tr + ts
         frame.set_transform(t)
 
-        return dx, dy, int(dtheta)
+        return dx, dy, dtheta
 
     # Question 2(b)
-    def generate_trajectory(self, initial_state, target_state, dt=0.1):
+    def _generate_trajectory(self, initial_state, target_state, dt=0.1):
         x_start = x_curr = initial_state[0]
         y_start = y_curr = initial_state[1]
         theta_start = theta_curr = initial_state[2]
@@ -157,11 +158,13 @@ class RRT_Robot:
             theta_diff = theta_goal - theta_curr
 
             """
-            System of Equations
+            Solve system of equations. Minimize least squares.
+            x = left wheel velocity
+            y = right wheel velocity
             
-            -(self.wheel_rad/self.width) * (right_vel - left_vel) = theta_diff             
-            ((left_vel + right_vel)/2) * np.sin(theta_start*2*np.pi/360) = x_diff
-            ((left_vel + right_vel)/2) * np.cos(theta_start*2*np.pi/360) = y_diff
+            eqn1:  -(25/90) * (x - y) = theta_diff
+            eqn2:   (x + y)/2 * sin(theta) = x_diff
+            eqn3:   (x + y)/2 * cos(theta) = x_diff
             """
 
             def equations(p):
@@ -175,15 +178,15 @@ class RRT_Robot:
             res = least_squares(equations, [1, 1], bounds=bnds)
             left_vel_input = res.x[0]
             right_vel_input = res.x[1]
-            dx, dy, dtheta = self.drive(x_curr, y_curr, theta_curr,
-                                        utils.vel_to_rpm(left_vel_input),
-                                        utils.vel_to_rpm(right_vel_input), dt)
+            dx, dy, dtheta = self._drive(x_curr, y_curr, theta_curr,
+                                         utils.vel_to_rpm(left_vel_input),
+                                         utils.vel_to_rpm(right_vel_input), dt)
 
             x_curr += dx
             y_curr += dy
             theta_curr = utils.add_angles(theta_curr, dtheta)
             
-            if self.check_collision((x_curr, y_curr, theta_curr)):
+            if self._check_collision((x_curr, y_curr, theta_curr)):
                 control_inputs = None
                 trajectory = None
                 break
@@ -197,7 +200,7 @@ class RRT_Robot:
         return control_inputs, trajectory, new_node
 
     # Question 2(c)
-    def check_collision(self, state):
+    def _check_collision(self, state):
         if len(self.config_space) == 0:
             raise ValueError("Robot configuration space has not yet been computed. \n \
                               Please use calculate_config_space.")
@@ -212,17 +215,20 @@ class RRT_Robot:
             if collision: break
         return collision
 
-    def RRT_plan(self, initial_state, goal_state):
+    # Question 2(d)
+    def RRT_plan(self, initial_state, goal_state, max_iters=3000):
         self.node_list.append(RRT_Node(initial_state))
         node_counter = 0
         collision_counter = 0
         bottom, top, left, right = utils.obstacle_to_corner(goal_state)
         goal_polygon = Polygon([(left, bottom), (left, top), (right, top), (right, bottom)])
         while True:
-            sample_point = utils.sample_random_point()
-            closest_point, closest_index = self.find_nearest_node(np.array([sample_point[0], sample_point[1]]))
+            sample_point = utils.sample_random_point(0, 2000, 0, 1400, 0, 360)
+            if collision_counter % 50 == 0:
+                sample_point = utils.sample_random_point(left, right, bottom, top+200, 170, 190)
+            closest_point, closest_index = self._find_nearest_node(np.array([sample_point[0], sample_point[1]]))
             curr_node = self.node_list[closest_index]
-            control_inputs, trajectory, new_node = self.generate_trajectory(curr_node.get_state(), sample_point)
+            control_inputs, trajectory, new_node = self._generate_trajectory(curr_node.get_state(), sample_point)
             if control_inputs is None:
                 print("Collision Count: {}".format(collision_counter))
                 collision_counter += 1
@@ -230,6 +236,10 @@ class RRT_Robot:
             new_node.set_parent_path(curr_node, control_inputs, trajectory)
             self.node_list.append(new_node)
             if goal_polygon.contains(Point(new_node.x, new_node.y)):
+                print("Path Found!")
+                break
+            if node_counter > max_iters:
+                print("Path could not be found after {} samples.".format(max_iters))
                 break
             node_counter += 1
             print("Node Count: {}".format(node_counter))
@@ -238,8 +248,8 @@ class RRT_Robot:
         for node in self.node_list:
             prev_node = node.parent
             if prev_node is None: continue
-            self.tree_ax.plot(node.x, node.y, 'b.')
             self.tree_ax.plot([prev_node.x, node.x], [prev_node.y, node.y], 'g')
+            self.tree_ax.plot(node.x, node.y, 'b.')
 
     def plot_path(self):
         curr_node = self.node_list[-1]
@@ -258,17 +268,18 @@ class RRT_Robot:
             self.trajectory_ax.add_patch(frame)
             self.trajectory_ax.plot(x, y, 'bo')
 
+    # def RRT_star_plan(self):
+
 def main():
     env = ParkingLot()
 
     initial_state = (125, 125, 0)
     robot = RRT_Robot(env.get_plots())
-    robot.calculate_config_space(env.obstacles)
+    robot.compute_config_space(env.obstacles)
     # robot.plot_config_space()
     robot.RRT_plan(initial_state, env.goals)
     robot.plot_path()
     plt.show()
-
 
 
 if __name__ == "__main__":
