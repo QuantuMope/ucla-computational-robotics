@@ -12,7 +12,7 @@ def rpm_to_vel(rpm):
     tire_circum = 2*np.pi*WHEEL_RADIUS
     rps = rpm/60
     distance_per_sec = (tire_circum * rps)
-    return np.round(distance_per_sec)
+    return distance_per_sec
 
 
 def vel_to_rpm(vel):
@@ -21,12 +21,27 @@ def vel_to_rpm(vel):
     tire_circum = 2*np.pi*WHEEL_RADIUS
     rps = vel / tire_circum
     rpm = rps * 60
-    return np.round(rpm)
+    return rpm
 
 
 def add_angles(a, b):
     if a+b > 360:
-        return np.round(a+b-360)
+        return a+b-360
     elif a+b < 0:
-        return np.round(360+(a+b))
-    return np.round(a+b)
+        return 360+(a+b)
+    return a+b
+
+
+def obstacle_to_corner(obstacle):
+    bottom = obstacle[1]
+    top = bottom + obstacle[3]
+    left = obstacle[0]
+    right = left + obstacle[2]
+    return bottom, top, left, right
+
+
+def sample_random_point():
+    rand_x = np.random.uniform(0, 2001)
+    rand_y = np.random.uniform(0, 1401)
+    rand_theta = np.random.uniform(0, 361)
+    return rand_x, rand_y, rand_theta

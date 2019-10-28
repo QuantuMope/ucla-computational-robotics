@@ -3,25 +3,34 @@ import matplotlib.pyplot as plt
 
 class ParkingLot:
     def __init__(self):
-        self.ax = self.init_env()
+        self.trajectory_ax = self.init_env()
+        self.tree_ax = self.init_env()
         self.obstacles = self.init_obstacles()
+        self.goals = self.init_goal_state()
+
+    def get_plots(self):
+        return self.trajectory_ax, self.tree_ax
 
     def init_obstacles(self):
-        obstacles = [[250, 0, 100, 800],
-                     [1100, 1000, 150, 400],
-                     [1350, 0, 150, 400],
-                     [750, 600, 400, 150]]
+        # Padding of 5 mm added due to rounding errors.
+        obstacles = [[245, 0, 110, 800],
+                     [1095, 995, 160, 405],
+                     [1345, 0, 160, 405],
+                     [745, 595, 410, 160]]
         for i in range(5):
-            obstacles.append([750+i*250, 0, 100, 400])
-            obstacles.append([750+i*250, 1000, 100, 400])
+            obstacles.append([755+i*250, -5, 110, 410])
+            obstacles.append([755+i*250, 995, 110, 410])
 
         # include map boundaries
-        obstacles.append([-1, 0, 1, 1400]) # West Boundary
-        obstacles.append([2000, 0, 1, 1400]) # East
-        obstacles.append([0, -1, 2000, 1]) # South
-        obstacles.append([0, 1400, 2000, 1]) # North
+        obstacles.append([-1, 0, 5, 1400]) # West Boundary
+        obstacles.append([2000, 0, 5, 1400]) # East
+        obstacles.append([0, -1, 2000, 5]) # South
+        obstacles.append([0, 1400, 2000, 5]) # North
 
         return obstacles
+
+    def init_goal_state(self):
+        return [1600, 0, 150, 200]
 
     def init_env(self):
         fig, ax = plt.subplots(figsize=(10, 7))

@@ -7,8 +7,7 @@ from scipy.optimize import least_squares
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
 from ParkingLot import ParkingLot
-from utils import rpm_to_vel, vel_to_rpm, add_angles
-
+import utils
 
 # in mm.
 WHEEL_RADIUS = 25
@@ -17,83 +16,44 @@ ROBOT_LENGTH = 100
 
 
 class RRT_Node:
-    def __init__(self, x, y, theta):
-        self.x = x
-        self.y = y
-        self.theta = theta
+    def __init__(self, initial_state):
+        self.x = initial_state[0]
+        self.y = initial_state[1]
+        self.theta = initial_state[2]
         self.parent = None
         self.actions = []
+        self.path = []
 
     def get_xy(self):
-        return np.array(self.x, self.y)
+        return np.array([self.x, self.y])
 
-    # def add_node(self, ):
+    def get_state(self):
+        return self.x, self.y, self.theta
 
+    def set_parent_path(self, parent_node, actions, path):
+        self.parent = parent_node
+        self.actions = actions
+        self.path = path
 
 
 class RRT_Robot:
-    def __init__(self, start_x, start_y, start_theta, parking_plot):
+    def __init__(self, parking_plot):
         self.width = ROBOT_WIDTH
         self.length = ROBOT_LENGTH
         self.wheel_rad = WHEEL_RADIUS
 
-        self.x = start_x
-        self.y = start_y
-        self.theta = start_theta
-        self.ax = parking_plot
+        self.curr_state = (self.x, self.y, self.theta)
+        self.trajectory_ax = parking_plot[0]
+        self.tree_ax = parking_plot[1]
 
-        self.frame = plt.Rectangle((self.x-45, self.y-75), self.width, self.length,
-                                   facecolor='cyan', linewidth=1, edgecolor='magenta')
-        self.ax.plot(self.x, self.y, marker='o', color='blue')
-        self.ax.add_patch(self.frame)
-
-        self.RRT = RRT_Node(start_x, start_y, start_theta)
-        self.node_list = [self.RRT]
+        self.node_list = []
         self.config_space = []
 
-    def calc_drive(self, x, y, theta, left, right, dt=0.1):
-        left_vel = rpm_to_vel(left)
-        right_vel = rpm_to_vel(right)
-        central_vel = (left_vel + right_vel) / 2
-        dtheta = -(self.wheel_rad/self.width) * (right_vel - left_vel) * dt
-        dx = central_vel * np.sin(theta*2*np.pi/360) * dt
-        dy = central_vel * np.cos(theta*2*np.pi/360) * dt
-
-        theta = add_angles(theta, dtheta)
-        x += dx
-        y += dy
-        frame = plt.Rectangle((x-45, y-75), self.width, self.length)
-        ts = self.ax.transData
-        tr = Affine2D().rotate_deg_around(x, y, -theta)
-        t = tr + ts
-        frame.set_transform(t)
-
-        return dx, dy, int(dtheta)
-
-    def drive(self, left, right, dt=0.1):
-        left_vel = rpm_to_vel(left)
-        right_vel = rpm_to_vel(right)
-        central_vel = (left_vel + right_vel) / 2
-        dtheta = -(self.wheel_rad/self.width) * (right_vel - left_vel) * dt
-        dx = central_vel * np.sin(self.theta*2*np.pi/360) * dt
-        dy = central_vel * np.cos(self.theta*2*np.pi/360) * dt
-
-        self.theta = add_angles(self.theta, dtheta)
-        self.x += dx
-        self.y += dy
-        self.frame = plt.Rectangle((self.x-45, self.y-75), self.width, self.length,
-                                   facecolor='cyan', linewidth=1, edgecolor='magenta')
-        ts = self.ax.transData
-        tr = Affine2D().rotate_deg_around(self.x, self.y, -self.theta)
-        t = tr + ts
-        self.frame.set_transform(t)
-        self.ax.add_patch(self.frame)
-        self.ax.plot(self.x, self.y, marker='o', color='blue')
 
     def calculate_config_space(self, obstacles):
         config_frame = plt.Rectangle((self.x-45, self.y-75), self.width, self.length)
-        ts = self.ax.transData
-        for theta in range(0, 361):
+        ts = self.trajectory_ax.transData
+        for theta in np.linspace(0, 360, 3600):
             tr = Affine2D().rotate_deg_around(self.x, self.y, -theta)
             t = tr + ts
             config_frame.set_transform(t)
@@ -105,17 +65,20 @@ class RRT_Robot:
                                 [x+self.width, y+self.length],
                                 [x+self.width, y]])
             corners = tr.transform(corners)
-            corner_to_center = (corners - np.array([self.x, self.y])) * -1
+            corner_to_center = np.round(corners - np.array([self.x, self.y])) * -1
+
+            a, b, c, d = 3, 0, 1, 2
+            if 90 <= theta < 180:
+                a, b, c, d = 2, 3, 0, 1
+            elif 180 <= theta < 270:
+                a, b, c, d = 1, 2, 3, 0
+            elif 270 <= theta < 360:
+                a, b, c, d = 0, 1, 2, 3
+
             obstacle_boundaries = []
             for obstacle in obstacles:
                 boundary = []
-                bottom = obstacle[1]
-                top = bottom + obstacle[3]
-                left = obstacle[0]
-                right = left + obstacle[2]
-                a, b, c, d = 0, 1, 2, 3
-                if theta < 180:
-                    a, b, c, d = 3, 0, 1, 2
+                bottom, top, left, right = utils.obstacle_to_corner(obstacle)
                 boundary.append((left + corner_to_center[a][0], top + corner_to_center[a][1], theta))
                 boundary.append((right + corner_to_center[a][0], top + corner_to_center[a][1], theta))
                 boundary.append((right + corner_to_center[b][0], top + corner_to_center[b][1], theta))
@@ -144,17 +107,36 @@ class RRT_Robot:
                 ax.add_collection3d(Poly3DCollection([obstacle_verts], edgecolors=color))
 
     # Question 2(a)
-    def find_nearest_node(self, xrand):
-        shortest_dist = np.linalg.norm(self.RRT.get_xy() - xrand)
+    def find_nearest_node(self, sample_point):
+        shortest_dist = np.linalg.norm(self.RRT.get_xy() - sample_point)
         min_index = 0
         nearest_node = self.RRT
         for i, node in enumerate(self.node_list):
-            dist = np.linalg.norm(node.get_xy() - xrand)
+            dist = np.linalg.norm(node.get_xy() - sample_point)
             if dist < shortest_dist:
                 shortest_dist = dist
                 min_index = i
                 nearest_node = node
         return nearest_node, min_index
+
+    def drive(self, x, y, theta, left, right, dt=0.1):
+        left_vel = utils.rpm_to_vel(left)
+        right_vel = utils.rpm_to_vel(right)
+        central_vel = (left_vel + right_vel) / 2
+        dtheta = -(self.wheel_rad/self.width) * (right_vel - left_vel) * dt
+        dx = central_vel * np.sin(theta*2*np.pi/360) * dt
+        dy = central_vel * np.cos(theta*2*np.pi/360) * dt
+
+        theta = utils.add_angles(theta, dtheta)
+        x += dx
+        y += dy
+        frame = plt.Rectangle((x-45, y-75), self.width, self.length)
+        ts = self.trajectory_ax.transData
+        tr = Affine2D().rotate_deg_around(x, y, -theta)
+        t = tr + ts
+        frame.set_transform(t)
+
+        return dx, dy, int(dtheta)
 
     # Question 2(b)
     def generate_trajectory(self, initial_state, target_state, dt=0.1):
@@ -168,8 +150,6 @@ class RRT_Robot:
         t = 0
         control_inputs = []
         trajectory = [[x_start, y_start, theta_start]]
-        self.ax.plot(x_start, y_start, 'ro')
-        self.ax.plot(x_goal, y_goal, 'go')
 
         while t < 1:
             x_diff = x_goal - x_curr
@@ -186,31 +166,35 @@ class RRT_Robot:
 
             def equations(p):
                 left_vel, right_vel = p
-                equation1 = -(self.wheel_rad / self.width) * (right_vel - left_vel) - theta_diff
-                equation2 = ((left_vel + right_vel) / 2) * np.sin(theta_start * 2 * np.pi / 360) - x_diff
-                equation3 = ((left_vel + right_vel) / 2) * np.cos(theta_start * 2 * np.pi / 360) - y_diff
-                return np.abs([equation1, equation2, equation3])
+                eq1 = -(self.wheel_rad / self.width) * (right_vel - left_vel) - theta_diff
+                eq2 = ((left_vel + right_vel) / 2) * np.sin(theta_start * 2 * np.pi / 360) - x_diff
+                eq3 = ((left_vel + right_vel) / 2) * np.cos(theta_start * 2 * np.pi / 360) - y_diff
+                return np.abs([eq1, eq2, eq3])
 
             bnds = ([-157, 157])
             res = least_squares(equations, [1, 1], bounds=bnds)
             left_vel_input = res.x[0]
             right_vel_input = res.x[1]
-            dx, dy, dtheta = self.calc_drive(x_curr, y_curr, theta_curr, vel_to_rpm(left_vel_input),
-                                             vel_to_rpm(right_vel_input), dt)
+            dx, dy, dtheta = self.drive(x_curr, y_curr, theta_curr,
+                                        utils.vel_to_rpm(left_vel_input),
+                                        utils.vel_to_rpm(right_vel_input), dt)
 
             x_curr += dx
             y_curr += dy
-            theta_curr = add_angles(theta_curr, dtheta)
+            theta_curr = utils.add_angles(theta_curr, dtheta)
             
             if self.check_collision((x_curr, y_curr, theta_curr)):
                 control_inputs = None
                 trajectory = None
                 break
 
-            control_inputs.append([vel_to_rpm(left_vel_input), vel_to_rpm(right_vel_input)])
+            control_inputs.append([utils.vel_to_rpm(left_vel_input), utils.vel_to_rpm(right_vel_input)])
             trajectory.append([x_curr, y_curr, theta_curr])
             t += dt
-        return control_inputs, trajectory
+
+        new_node = RRT_Node((x_curr, y_curr, theta_curr))
+
+        return control_inputs, trajectory, new_node
 
     # Question 2(c)
     def check_collision(self, state):
@@ -220,7 +204,7 @@ class RRT_Robot:
         collision = False
         x, y, theta = state
         point = Point(x, y)
-        config_space_plane = self.config_space[theta]
+        config_space_plane = self.config_space[int(np.round(theta, 1)/0.1)]
         for obstacle in config_space_plane:
             coordinates2d = [(x, y) for x, y, theta in obstacle]
             polygon = Polygon(coordinates2d)
@@ -228,31 +212,61 @@ class RRT_Robot:
             if collision: break
         return collision
 
-    def sample_xrand(self):
+    def RRT_plan(self, initial_state, goal_state):
+        self.node_list.append(RRT_Node(initial_state))
+        node_counter = 0
+        collision_counter = 0
+        bottom, top, left, right = utils.obstacle_to_corner(goal_state)
+        goal_polygon = Polygon([(left, bottom), (left, top), (right, top), (right, bottom)])
+        while True:
+            sample_point = utils.sample_random_point()
+            closest_point, closest_index = self.find_nearest_node(np.array([sample_point[0], sample_point[1]]))
+            curr_node = self.node_list[closest_index]
+            control_inputs, trajectory, new_node = self.generate_trajectory(curr_node.get_state(), sample_point)
+            if control_inputs is None:
+                print("Collision Count: {}".format(collision_counter))
+                collision_counter += 1
+                continue
+            new_node.set_parent_path(curr_node, control_inputs, trajectory)
+            self.node_list.append(new_node)
+            if goal_polygon.contains(Point(new_node.x, new_node.y)):
+                break
+            node_counter += 1
+            print("Node Count: {}".format(node_counter))
 
+        # Plot the tree.
+        for node in self.node_list:
+            prev_node = node.parent
+            if prev_node is None: continue
+            self.tree_ax.plot(node.x, node.y, 'b.')
+            self.tree_ax.plot([prev_node.x, node.x], [prev_node.y, node.y], 'g')
 
-    def plan(self, initial_state, target_state):
-
-            
-
-
-
-
-
-
-
-
-
-
+    def plot_path(self):
+        curr_node = self.node_list[-1]
+        trajectory = []
+        while curr_node is not None:
+            trajectory = curr_node.path + trajectory
+            curr_node = curr_node.parent
+        for state in trajectory:
+            x, y, theta = state
+            frame = plt.Rectangle((x-45, y-75), self.width, self.length,
+                                  facecolor='cyan', linewidth=1, edgecolor='magenta')
+            ts = self.trajectory_ax.transData
+            tr = Affine2D().rotate_deg_around(x, y, -theta)
+            t = tr + ts
+            frame.set_transform(t)
+            self.trajectory_ax.add_patch(frame)
+            self.trajectory_ax.plot(x, y, 'bo')
 
 def main():
     env = ParkingLot()
 
-    robot = RRT_Robot(100, 100, 0, env.ax)
+    initial_state = (125, 125, 0)
+    robot = RRT_Robot(env.get_plots())
     robot.calculate_config_space(env.obstacles)
     # robot.plot_config_space()
-    control_inputs, traj = robot.generate_trajectory((100, 100, 0), (550, 550, 60))
-    print(control_inputs)
+    robot.RRT_plan(initial_state, env.goals)
+    robot.plot_path()
     plt.show()
 
 
