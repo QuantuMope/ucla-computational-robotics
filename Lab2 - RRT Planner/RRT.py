@@ -52,8 +52,7 @@ class RRT_Robot:
         center_x, center_y = 500, 500 # arbitrary values
         config_frame = plt.Rectangle((center_x-45, center_y-75), self.width, self.length)
         ts = self.trajectory_ax.transData
-        for theta in np.linspace(0, 360, 3600):
-        # for theta in [0,45, 90, 135, 180]:
+        for theta in np.linspace(0, 360, 3610):
             tr = Affine2D().rotate_deg_around(center_x, center_y, -theta)
             t = tr + ts
             config_frame.set_transform(t)
@@ -120,22 +119,13 @@ class RRT_Robot:
                 nearest_node = node
         return nearest_node, min_index
 
-    def _drive(self, x, y, theta, left, right, dt=0.1):
+    def _drive(self, theta, left, right, dt=0.1):
         left_vel = utils.rpm_to_vel(left)
         right_vel = utils.rpm_to_vel(right)
         central_vel = (left_vel + right_vel) / 2
         dtheta = -(self.wheel_rad/self.width) * (right_vel - left_vel) * dt
         dx = central_vel * np.sin(theta*2*np.pi/360) * dt
         dy = central_vel * np.cos(theta*2*np.pi/360) * dt
-
-        theta = utils.add_angles(theta, dtheta)
-        x += dx
-        y += dy
-        frame = plt.Rectangle((x-45, y-75), self.width, self.length)
-        ts = self.trajectory_ax.transData
-        tr = Affine2D().rotate_deg_around(x, y, -theta)
-        t = tr + ts
-        frame.set_transform(t)
 
         return dx, dy, dtheta
 
@@ -178,7 +168,7 @@ class RRT_Robot:
             res = least_squares(equations, [1, 1], bounds=bnds)
             left_vel_input = res.x[0]
             right_vel_input = res.x[1]
-            dx, dy, dtheta = self._drive(x_curr, y_curr, theta_curr,
+            dx, dy, dtheta = self._drive(theta_curr,
                                          utils.vel_to_rpm(left_vel_input),
                                          utils.vel_to_rpm(right_vel_input), dt)
 
@@ -226,6 +216,7 @@ class RRT_Robot:
             sample_point = utils.sample_random_point(0, 2000, 0, 1400, 0, 360)
             if collision_counter % 50 == 0:
                 sample_point = utils.sample_random_point(left, right, bottom, top+200, 170, 190)
+            if self._check_collision(sample_point): continue
             closest_point, closest_index = self._find_nearest_node(np.array([sample_point[0], sample_point[1]]))
             curr_node = self.node_list[closest_index]
             control_inputs, trajectory, new_node = self._generate_trajectory(curr_node.get_state(), sample_point)
@@ -248,7 +239,7 @@ class RRT_Robot:
         for node in self.node_list:
             prev_node = node.parent
             if prev_node is None: continue
-            self.tree_ax.plot([prev_node.x, node.x], [prev_node.y, node.y], 'g')
+            self.tree_ax.plot([prev_node.x, node.x], [prev_node.y, node.y], 'magenta')
             self.tree_ax.plot(node.x, node.y, 'b.')
 
     def plot_path(self):

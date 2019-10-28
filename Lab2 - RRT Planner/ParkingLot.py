@@ -18,8 +18,8 @@ class ParkingLot:
                      [1345, 0, 160, 405],
                      [745, 595, 410, 160]]
         for i in range(5):
-            obstacles.append([755+i*250, -5, 110, 410])
-            obstacles.append([755+i*250, 995, 110, 410])
+            obstacles.append([745+i*250, -5, 110, 410])
+            obstacles.append([745+i*250, 995, 110, 410])
 
         # include map boundaries
         obstacles.append([-1, 0, 5, 1400]) # West Boundary
@@ -30,7 +30,7 @@ class ParkingLot:
         return obstacles
 
     def init_goal_state(self):
-        return [1600, 0, 150, 200]
+        return [1600, 0, 150, 350]
 
     def init_env(self):
         fig, ax = plt.subplots(figsize=(10, 7))
@@ -60,7 +60,7 @@ class ParkingLot:
             plt.text(890+i*250, 1170, str(i+1), fontsize=24, fontweight='bold')
 
         # Goal state at spot 9.
-        goal_spot9 = plt.Rectangle((1600, 0), 150, 200, color='g')
+        goal_spot9 = plt.Rectangle((1605, 0), 145, 350, color='g')
         ax.add_patch(goal_spot9)
 
         return ax

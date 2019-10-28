@@ -43,5 +43,5 @@ def obstacle_to_corner(obstacle):
 def sample_random_point(low_x, high_x, low_y, high_y, low_theta, high_theta):
     rand_x = np.random.uniform(low_x, high_x+1)
     rand_y = np.random.uniform(low_y, high_y+1)
-    rand_theta = np.random.uniform(low_theta, high_theta+1)
+    rand_theta = np.random.uniform(low_theta, high_theta)
     return rand_x, rand_y, rand_theta
