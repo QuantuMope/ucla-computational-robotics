@@ -24,6 +24,7 @@ class RRT_Node:
         self.cost = 0
         self.actions = []
         self.path = []
+        self.level = 0
 
     def get_state(self):
         return np.array([self.x, self.y, self.theta])
@@ -36,6 +37,7 @@ class RRT_Node:
         self.actions = actions
         self.path = path
         self.cost = self.parent.cost + len(self.actions)
+        self.level = self.parent.level + 1
 
     def equals(self, other_node):
         return self.get_state() == other_node.get_state()
@@ -250,9 +252,11 @@ class RRT_Robot:
         curr_node = self.node_list[-1]
         trajectory = []
         while curr_node is not None:
+            print("breaks0")
             trajectory = curr_node.path + trajectory
             curr_node = curr_node.parent
         for state in trajectory:
+            print("breaks2")
             x, y, theta = state
             frame = plt.Rectangle((x-45, y-75), self.width, self.length,
                                   facecolor='cyan', linewidth=1, edgecolor='magenta')
@@ -260,6 +264,7 @@ class RRT_Robot:
             tr = Affine2D().rotate_deg_around(x, y, -theta)
             t = tr + ts
             frame.set_transform(t)
+            print("breaks1")
             self.trajectory_ax.add_patch(frame)
             self.trajectory_ax.plot(x, y, 'bo', markersize=2)
             if animation:
@@ -280,32 +285,30 @@ class RRT_Robot:
 
         rewire_check = 0
         rewire_counter = 0
-        for node in self.node_list:
+        for e, node in enumerate(self.node_list):
             rewire_check += 1
             if node.parent is None: continue
             orig_parent = node.parent
             orig_cost = node.cost
             better_node = node.parent
             if rewire_check % 50 == 0: print("Rewire Check for Node: {}".format(rewire_check))
-            print("gets_caught_earlier")
             candidates = np.argwhere(np.sqrt(np.sum((all_states - node.get_state())**2, axis=1)) < threshold)
             for i in candidates:
-                print("gets_caught")
+                if i == e:continue
                 if self.node_list[i[0]].cost < better_node.cost:
                     better_node = self.node_list[i[0]]
             # if better_node.equals(orig_parent): continue
+            if better_node.level >= node.level: continue
             rewire_control = []
             rewire_trajectory = []
             rewire_cost = better_node.cost
             new_node = better_node
             while True:
-                print("enters loop")
                 control_inputs, trajectory, new_node = self._generate_trajectory(new_node.get_state(), node.get_state())
                 if rewire_cost > orig_cost or control_inputs is None: break
-                rewire_cost += len(control_inputs)
+                rewire_cost += 11
                 rewire_control = rewire_control + control_inputs
                 rewire_trajectory = rewire_trajectory + trajectory
-                print("This is broken")
                 if np.all(np.abs(np.array([new_node.x-node.x, new_node.y-node.y, new_node.theta-node.theta])) < 3):
                     node.set_parent(better_node, rewire_control, rewire_trajectory)
                     node.cost = orig_cost
@@ -313,7 +316,7 @@ class RRT_Robot:
                     print("Rewired Count: {}".format(rewire_counter))
                     break
 
-    def RRT_star_plan(self, initial_state, goal_state, max_iters=10):
+    def RRT_star_plan(self, initial_state, goal_state, max_iters=1000):
         """
         Optimized version of RRT planning algorithm with key differences.
         1. New nodes are connected to closest node after trajectory not before.
@@ -346,7 +349,6 @@ class RRT_Robot:
                 print("Collision Count: {}".format(collision_counter))
                 continue
 
-            better_node = new_node
             node_counter += 1
             print("Node Count: {}".format(node_counter))
 
