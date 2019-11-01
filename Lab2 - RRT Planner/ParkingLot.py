@@ -2,6 +2,9 @@ import matplotlib.pyplot as plt
 
 
 class ParkingLot:
+    """
+    Parking lot environment for RRT Robot.
+    """
     def __init__(self):
         self.trajectory_ax = self.init_env()
         self.tree_ax = self.init_env()
@@ -12,7 +15,17 @@ class ParkingLot:
         return self.trajectory_ax, self.tree_ax
 
     def init_obstacles(self):
-        # Padding of 5 mm added due to rounding errors.
+        """
+        Initialize list of obstacles where each entry is:
+        [lower left corner x,
+         lower left corner y,
+         width,
+         height]
+
+        Padding of 5 mm added as a safety factor against
+        possible collisions due to rounding errors when checking
+        configuration space.
+        """
         obstacles = [[245, 0, 110, 800],
                      [1095, 995, 160, 405],
                      [1345, 0, 160, 405],
@@ -30,9 +43,15 @@ class ParkingLot:
         return obstacles
 
     def init_goal_state(self):
+        """
+        Similar to init_obstacles except for goal state.
+        """
         return [1600, 0, 150, 350]
 
     def init_env(self):
+        """
+        Plot of the environment.
+        """
         fig, ax = plt.subplots(figsize=(10, 7))
         ax.grid()
         ax.set_facecolor('gray')
