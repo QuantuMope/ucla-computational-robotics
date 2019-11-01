@@ -46,7 +46,7 @@ class RRT_Robot:
         Computed for every 0.1 degree turn of the robot. Configuration
         space for each 0.1 degree is stored as an array of C_obs polygons.
 
-        Note: Assumes rectangular obstacles only.
+        WORKS FOR RECTANGULAR OBSTACLES ONLY
 
         Reference:
         https://www.cs.cmu.edu/~motionplanning/lecture/Chap3-Config-Space_howie.pdf
@@ -191,7 +191,8 @@ class RRT_Robot:
         :param goal_state: numpy array [x, y, theta] of goal state
         :param dt: time step, default 0.1 second
 
-        Note: If collision occurs during trajectory, None is returned for all three values
+        If collision occurs during trajectory, None is returned for all three values
+
         :return actions: sequence of actions from initial_state to new_node
         :return trajectory: sequence of states from initial_state to new_node
         :return new_node: RRT_Node of final state
