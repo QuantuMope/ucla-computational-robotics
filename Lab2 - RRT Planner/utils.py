@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 """
     Helper functions for RRT Robot
@@ -16,11 +17,11 @@ def rpm_to_vel(rpm):
     Convert from RPM to angular velocity.
 
     :param rpm: wheel RPM
-    :return angular_vel: wheel angular velocity (degree/sec)
+    :return angular_vel: wheel angular velocity (rad/sec)
     """
     if rpm > 60 or rpm < -60:
         raise ValueError("Invalid rpm. Range: -60 to 60 RPM")
-    angular_vel = rpm * 6
+    angular_vel = math.radians(rpm * 6)
     return angular_vel
 
 
@@ -28,12 +29,12 @@ def vel_to_rpm(vel):
     """
     Convert from angular velocity to RPM.
 
-    :param vel: wheel angular velocity (degree/sec)
+    :param vel: wheel angular velocity (rad/sec)
     :return rpm: wheel rpm
     """
-    if vel > 360 or vel < -360:
-        raise ValueError("Invalid angular velocity. Range: -360 to 360 degrees/sec")
-    rpm = vel / 6
+    if vel > 6.3 or vel < -6.3:
+        raise ValueError("Invalid angular velocity. Range: -6.3 to 6.3 rad/sec")
+    rpm = math.degrees(vel) / 6
     return rpm
 
 

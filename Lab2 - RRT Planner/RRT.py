@@ -1,3 +1,4 @@
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Affine2D
@@ -30,7 +31,7 @@ class RRT_Robot:
     def __init__(self, env_plot):
         self.width = ROBOT_WIDTH
         self.length = ROBOT_LENGTH
-        self.wheel_rad = WHEEL_RADIUS
+        self.wheel_radius = WHEEL_RADIUS
 
         self.trajectory_ax = env_plot[0]
         self.tree_ax = env_plot[1]
@@ -163,17 +164,17 @@ class RRT_Robot:
         http://planning.cs.uiuc.edu/node659.html
 
         :param theta: robot theta
-        :param left: left wheel angular velocity (degree/sec)
-        :param right: right wheel angular velocity (degree/sec)
+        :param left: left wheel angular velocity (rad/sec)
+        :param right: right wheel angular velocity (rad/sec)
         :param dt: time step in seconds, default 0.1sec
         :return dx: travelled distance in x
         :return dy: travelled distance in y
-        :return dtheta: rotation change
+        :return dtheta: rotation change (radians)
         """
-        central_vel = (left + right) / 2
-        dtheta = -(self.wheel_rad/self.width) * (right - left) * dt
-        dx = central_vel * np.sin(theta*2*np.pi/360) * dt
-        dy = central_vel * np.cos(theta*2*np.pi/360) * dt
+        central_vel = self.wheel_radius * (left + right) / 2
+        dtheta = -(self.wheel_radius / self.width) * (right - left) * dt
+        dx = central_vel * np.sin(math.radians(theta)) * dt
+        dy = central_vel * np.cos(math.radians(theta)) * dt
 
         return dx, dy, dtheta
 
@@ -201,25 +202,25 @@ class RRT_Robot:
         t = 0
         actions = []
         trajectory = [[x_curr, y_curr, theta_curr]]
-        wheel_velocity_bounds = ([-157, 157]) # in mm/s
+        wheel_velocity_bounds = ([-6.3, 6.3]) # in rad/s
 
         """
         ------------------ Drive Policy ----------------------
         Solve system of equations. Minimize least squares.
-        x = left wheel angular velocity (degree/s)
-        y = right wheel angular velocity (degree/s)
+        x = left wheel angular velocity (rad/s)
+        y = right wheel angular velocity (rad/s)
 
-        eqn1:  -(25/90) * (x - y) = theta_diff
-        eqn2:   (x + y)/2 * sin(theta) = x_diff
-        eqn3:   (x + y)/2 * cos(theta) = y_diff
+        eqn1:  -(25/90) * (y - x) = theta_diff
+        eqn2:   25 * (x + y)/2 * sin(theta) = x_diff
+        eqn3:   25 * (x + y)/2 * cos(theta) = y_diff
         ------------------------------------------------------
         """
 
         def equations(p):
             left_vel, right_vel = p
-            eq1 = -(self.wheel_rad / self.width) * (right_vel - left_vel) - theta_diff
-            eq2 = ((left_vel + right_vel) / 2) * np.sin(theta_curr * 2 * np.pi / 360) - x_diff
-            eq3 = ((left_vel + right_vel) / 2) * np.cos(theta_curr * 2 * np.pi / 360) - y_diff
+            eq1 = -(self.wheel_radius / self.width) * (right_vel - left_vel) - math.radians(theta_diff)
+            eq2 = self.wheel_radius * (left_vel + right_vel) / 2 * np.sin(math.radians(theta_curr)) - x_diff
+            eq3 = self.wheel_radius * (left_vel + right_vel) / 2 * np.cos(math.radians(theta_curr)) - y_diff
             return np.abs([eq1, eq2, eq3])
 
         while t < 1:
@@ -234,7 +235,7 @@ class RRT_Robot:
 
             x_curr += dx
             y_curr += dy
-            theta_curr = utils.add_angles(theta_curr, dtheta)
+            theta_curr = utils.add_angles(theta_curr, math.degrees(dtheta))
             
             if self._check_collision((x_curr, y_curr, theta_curr)):
                 actions = trajectory = None
@@ -291,7 +292,7 @@ class RRT_Robot:
         while True:
             # Sample a point in the state space. Every 50 nodes, sample from goal region.
             sample_point = utils.sample_random_point(0, 2000, 0, 1400, 0, 360)
-            if node_counter % 50 == 0:
+            if node_counter % 25 == 0:
                 sample_point = utils.sample_random_point(left, right, bottom, top+200, 170, 190)
                 node_counter += 1 # Necessary to avoid infinite loop if a collision occurs
             # Resample if sample is in C_obs.
@@ -461,7 +462,7 @@ class RRT_Robot:
 
         while True:
             sample_point = utils.sample_random_point(0, 2000, 0, 1400, 0, 360)
-            if node_counter % 50 == 0:
+            if node_counter % 25 == 0:
                 sample_point = utils.sample_random_point(left, right, bottom, top+200, 170, 190)
                 node_counter += 1
 
