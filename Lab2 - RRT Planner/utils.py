@@ -19,7 +19,7 @@ def rpm_to_vel(rpm):
     :return angular_vel: wheel angular velocity (degree/sec)
     """
     if rpm > 60 or rpm < -60:
-        raise ValueError("Invalid rpm. Range: -60 to 60")
+        raise ValueError("Invalid rpm. Range: -60 to 60 RPM")
     angular_vel = rpm * 6
     return angular_vel
 
@@ -32,7 +32,7 @@ def vel_to_rpm(vel):
     :return rpm: wheel rpm
     """
     if vel > 360 or vel < -360:
-        raise ValueError("Invalid velocity. Range: -157 to 157")
+        raise ValueError("Invalid angular velocity. Range: -360 to 360 degrees/sec")
     rpm = vel / 6
     return rpm
 
