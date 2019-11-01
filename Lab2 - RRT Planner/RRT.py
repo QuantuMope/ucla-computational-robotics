@@ -436,8 +436,8 @@ class RRT_Robot:
                 # we must reconnect to already existing nodes.
                 if np.all(np.abs(np.array([new_node.x-node.x, new_node.y-node.y, new_node.theta-node.theta])) < 3):
                     node.set_parent(better_node, rewire_actions, rewire_trajectory)
-                    rewire_counter += 1
-                    print("Rewired Count: {}".format(rewire_counter))
+                    rewire_success += 1
+                    print("Rewired Count: {}".format(rewire_success))
                     break
 
     def RRT_star_plan(self, initial_state, goal_state, max_iters=1000):
@@ -512,8 +512,8 @@ def main():
     robot = RRT_Robot(env.get_plots())
     robot.compute_config_space(env.obstacles)
     # robot.plot_config_space()
-    robot.RRT_plan(initial_state, env.goals)
-    # robot.RRT_star_plan(initial_state, env.goals)
+    # robot.RRT_plan(initial_state, env.goals)
+    robot.RRT_star_plan(initial_state, env.goals)
     robot.plot_rrt_tree()
     robot.plot_path()
     plt.show()
