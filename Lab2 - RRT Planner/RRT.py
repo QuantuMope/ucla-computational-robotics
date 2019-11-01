@@ -163,17 +163,15 @@ class RRT_Robot:
         http://planning.cs.uiuc.edu/node659.html
 
         :param theta: robot theta
-        :param left: left wheel RPM
-        :param right: right wheel RPM
+        :param left: left wheel angular velocity (degree/sec)
+        :param right: right wheel angular velocity (degree/sec)
         :param dt: time step in seconds, default 0.1sec
         :return dx: travelled distance in x
         :return dy: travelled distance in y
         :return dtheta: rotation change
         """
-        left_vel = utils.rpm_to_vel(left)
-        right_vel = utils.rpm_to_vel(right)
-        central_vel = (left_vel + right_vel) / 2
-        dtheta = -(self.wheel_rad/self.width) * (right_vel - left_vel) * dt
+        central_vel = (left + right) / 2
+        dtheta = -(self.wheel_rad/self.width) * (right - left) * dt
         dx = central_vel * np.sin(theta*2*np.pi/360) * dt
         dy = central_vel * np.cos(theta*2*np.pi/360) * dt
 
@@ -208,12 +206,12 @@ class RRT_Robot:
         """
         ------------------ Drive Policy ----------------------
         Solve system of equations. Minimize least squares.
-        x = left wheel velocity
-        y = right wheel velocity
+        x = left wheel angular velocity (degree/s)
+        y = right wheel angular velocity (degree/s)
 
         eqn1:  -(25/90) * (x - y) = theta_diff
         eqn2:   (x + y)/2 * sin(theta) = x_diff
-        eqn3:   (x + y)/2 * cos(theta) = x_diff
+        eqn3:   (x + y)/2 * cos(theta) = y_diff
         ------------------------------------------------------
         """
 
@@ -232,9 +230,7 @@ class RRT_Robot:
             res = least_squares(equations, [1, 1], bounds=wheel_velocity_bounds)
             left_vel_input, right_vel_input = res.x
 
-            dx, dy, dtheta = self._drive(theta_curr,
-                                         utils.vel_to_rpm(left_vel_input),
-                                         utils.vel_to_rpm(right_vel_input), dt)
+            dx, dy, dtheta = self._drive(theta_curr, left_vel_input, right_vel_input, dt)
 
             x_curr += dx
             y_curr += dy
@@ -515,8 +511,8 @@ def main():
     robot = RRT_Robot(env.get_plots())
     robot.compute_config_space(env.obstacles)
     # robot.plot_config_space()
-    # robot.RRT_plan(initial_state, env.goals)
-    robot.RRT_star_plan(initial_state, env.goals)
+    robot.RRT_plan(initial_state, env.goals)
+    # robot.RRT_star_plan(initial_state, env.goals)
     robot.plot_rrt_tree()
     robot.plot_path()
     plt.show()

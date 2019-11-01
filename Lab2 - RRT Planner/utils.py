@@ -13,31 +13,27 @@ ROBOT_LENGTH = 100
 
 def rpm_to_vel(rpm):
     """
-    Convert from RPM to translational velocity.
+    Convert from RPM to angular velocity.
 
     :param rpm: wheel RPM
-    :return distance_per_sec: wheel velocity
+    :return angular_vel: wheel angular velocity (degree/sec)
     """
     if rpm > 60 or rpm < -60:
         raise ValueError("Invalid rpm. Range: -60 to 60")
-    tire_circum = 2*np.pi*WHEEL_RADIUS
-    rps = rpm/60
-    distance_per_sec = (tire_circum * rps)
-    return distance_per_sec
+    angular_vel = rpm * 6
+    return angular_vel
 
 
 def vel_to_rpm(vel):
     """
-    Convert from translational velocity to RPM.
+    Convert from angular velocity to RPM.
 
-    :param vel: wheel velocity
+    :param vel: wheel angular velocity (degree/sec)
     :return rpm: wheel rpm
     """
-    if vel > 157 or vel < -157:
+    if vel > 360 or vel < -360:
         raise ValueError("Invalid velocity. Range: -157 to 157")
-    tire_circum = 2*np.pi*WHEEL_RADIUS
-    rps = vel / tire_circum
-    rpm = rps * 60
+    rpm = vel / 6
     return rpm
 
 
