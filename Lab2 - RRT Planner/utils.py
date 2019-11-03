@@ -1,5 +1,6 @@
 import numpy as np
 import math
+import time
 
 """
     Helper functions for RRT Robot
@@ -70,3 +71,26 @@ def sample_random_point(low_x, high_x, low_y, high_y, low_theta, high_theta):
     rand_y = np.random.uniform(low_y, high_y+1)
     rand_theta = np.random.uniform(low_theta, high_theta)
     return np.array([rand_x, rand_y, rand_theta])
+
+class Timer:
+    def __init__(self):
+        self._elapsed_time  = 0
+        self._startTime      = 0
+        self._cycled_count  = 0
+
+    def tic(self):
+        self._startTime = time.time()
+
+    def toc(self):
+        return time.time() - self._startTime
+
+    def estimated_remaining_time(self,cycle_time,current_count,_max_count):
+        self._elapsed_time += cycle_time
+        self._cycled_count += 1
+        _time_for_one_cycle = self._elapsed_time/self._cycled_count
+
+        return (_max_count - current_count) * _time_for_one_cycle
+
+
+
+
