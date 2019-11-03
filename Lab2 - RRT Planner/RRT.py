@@ -7,7 +7,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.optimize import least_squares
 from shapely.geometry import Point
 from shapely.geometry.polygon import Polygon
-from ParkingLot import ParkingLot
+from ParkingLotSimple import ParkingLot
 from RRT_Node import RRT_Node
 import utils
 
@@ -392,6 +392,72 @@ class RRT_Robot:
             node_counter += 1
 
 
+    def RRT_plan_for_iteration(self, initial_state, goal_state, max_iters=3000):
+        """
+        Robot planner that attempts to find a viable path free of obstacles from the provided
+        initial state to the goal state using RRT algorithm.
+
+        Planner ends when number of max iterations occurs or a path is found.
+        Report when the path was found (#of nodes)
+
+
+        :param initial_state: numpy array [x, y, theta] of initial state
+        :param goal_state: numpy array [x, y, theta] of goal state
+        :param max_iters: number of iterations before ending RRT algorithm
+        """
+        # Initialize root of RRT tree and goal area.
+        self.node_list.append(RRT_Node(initial_state))
+        node_counter = collision_counter = 0
+        bottom, top, left, right = utils.obstacle_to_corner(goal_state)
+        goal_polygon = Polygon([(left, bottom), (left, top), (right, top), (right, bottom)])
+
+        timer = utils.Timer()
+
+        while True:
+            timer.tic()
+
+            # Sample a point in the state space. Every 50 nodes, sample from goal region.
+            sample_point = utils.sample_random_point(0, 2000, 0, 1400, 0, 360)
+            if node_counter % 25 == 0:
+                sample_point = utils.sample_random_point(left, right, bottom, top + 200, 170, 190)
+                node_counter += 1  # Necessary to avoid infinite loop if a collision occurs
+            # Resample if sample is in C_obs.
+            if self._check_collision(sample_point): continue
+
+            # Find nearest node and generate a trajectory driving towards sampled point.
+            nearest_node = self._find_nearest_node(sample_point)
+            actions, trajectory, new_node = self._generate_trajectory(nearest_node.get_state(), sample_point)
+
+            # Check to see if a collision occurred during trajectory generation.
+            if trajectory is None:
+                #print("Collision Count: {}".format(collision_counter))
+                collision_counter += 1
+                continue
+
+            # If no collision, add new node to the RRT tree and store parent node and sequence of actions/states.
+            new_node.set_parent(nearest_node, actions, trajectory)
+            self.node_list.append(new_node)
+
+            # End conditions.
+            if goal_polygon.contains(Point(new_node.x, new_node.y)):
+                print("Path Found!")
+                return node_counter
+                #break
+            if node_counter > max_iters:
+                print("Sampling Done: {} samples.".format(max_iters))
+
+                #no path found
+                return -1
+
+            if (node_counter % 50) == 1:
+                print("Node Count: {}".format(node_counter))
+                print("Collision Count: {}".format(collision_counter))
+
+            estimated_time = timer.estimated_remaining_time(timer.toc(), node_counter, max_iters)
+            if (node_counter % 50) == 1:
+                print("Time remaining: {}".format(estimated_time))
+
+            node_counter += 1
 
 
 
@@ -589,8 +655,28 @@ def main():
     robot.compute_config_space(env.obstacles)
     # robot.plot_config_space()
     #robot.RRT_plan(initial_state, env.goals,5000)
-    robot.RRT_plan_with_estimate(initial_state, env.goals, 1000)
+    #robot.RRT_plan_with_estimate(initial_state, env.goals, 1000)
     #robot.RRT_star_plan(initial_state, env.goals)
+
+    print("Sample Found {}".format(robot.RRT_plan_for_iteration(initial_state, env.goals, 3000)))
+
+    # counter = 0
+    # total = 0
+    # for x in range(10):
+    #     sample_when_found = robot.RRT_plan_for_iteration(initial_state, env.goals, 3000)
+    #
+    #     if(sample_when_found != -1):
+    #         #path found
+    #         counter += 1
+    #         total += sample_when_found
+    #
+    # if(counter == 0):
+    #     print("Avg sample # when found 0")
+    # else:
+    #     print("Avg sample # when found {}".format(total/counter))
+    # print("Path found {} out of 10",format(counter))
+
+
     # toc time
     print("Time elapsed: {}".format(main_timer.toc()))
     robot.plot_rrt_tree()
