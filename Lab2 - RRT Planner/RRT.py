@@ -440,7 +440,7 @@ class RRT_Robot:
                     print("Rewired Count: {}".format(rewire_success))
                     break
 
-    def RRT_star_plan(self, initial_state, goal_state, max_iters=1000):
+    def RRT_star_plan(self, initial_state, goal_state, max_iters=2000):
         """
         RRT* Planner
         Optimized version of RRT planning algorithm with some key differences:
@@ -512,8 +512,8 @@ def main():
     robot = RRT_Robot(env.get_plots())
     robot.compute_config_space(env.obstacles)
     # robot.plot_config_space()
-    # robot.RRT_plan(initial_state, env.goals)
-    robot.RRT_star_plan(initial_state, env.goals)
+    robot.RRT_plan(initial_state, env.goals)
+    # robot.RRT_star_plan(initial_state, env.goals)
     robot.plot_rrt_tree()
     robot.plot_path()
     plt.show()

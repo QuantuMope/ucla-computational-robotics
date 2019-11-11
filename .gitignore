@@ -2,3 +2,10 @@ venv/
 .idea/
 pset0/
 __pycache__/
+*.log
+*.synctex.gz
+*.tex
+images/
+research_images/
+research_notes/
+out/
