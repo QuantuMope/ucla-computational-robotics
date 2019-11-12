@@ -28,13 +28,15 @@ MOTOR_STD = 0.05
 
 class EKFRobot(EKF):
     def __init__(self, initial_state):
-        EKF.__init__(self, 3, 2, 2)
+        EKF.__init__(self, 3, 3, 2)
         self.width = ROBOT_WIDTH
         self.length = ROBOT_LENGTH
         self.wheel_radius = WHEEL_RADIUS
 
         # x, y, theta
-        self.x = np.array([initial_state[0], initial_state[1], initial_state[2]]).T
+        self.x = np.array([[initial_state[0]],
+                           [initial_state[1]],
+                           [initial_state[2]]]).T
 
         x, y, theta, dt, wr, wl = symbols(
             'x, y, theta, dt, wr, wl')
@@ -60,7 +62,7 @@ class EKFRobot(EKF):
     def predict(self, u, dt=1):
         self._drive(u, dt)
 
-        self.subs[self.theta] = self.x[2, 0]
+        self.subs[self.theta] = self.x[2]
         self.subs[self.wl] = u[0]
         self.subs[self.wr] = u[1]
 
@@ -80,7 +82,7 @@ class EKFRobot(EKF):
         dx = central_vel * np.sin(math.radians(self.x[2])) * dt
         dy = central_vel * np.cos(math.radians(self.x[2])) * dt
 
-        du = np.array([[dx], [dy], [dtheta]])
+        du = np.array([dx, dy, math.degrees(dtheta)])
         self.x += du
 
 
@@ -88,25 +90,29 @@ class EKFRobot(EKF):
         west_border = LineString([(0,0), (0, MAP_HEIGHT)])
         east_border = LineString([(MAP_WIDTH,0), (MAP_WIDTH, MAP_HEIGHT)])
         north_border = LineString([(0, MAP_HEIGHT), (MAP_WIDTH, MAP_HEIGHT)])
-        south_border = LineString([(0,0), (MAP_WIDTH, 0)])
+        south_border = LineString([(0, 0), (MAP_WIDTH, 0)])
         return [west_border, east_border, north_border, south_border]
 
     def _jh_jacobian_check(self):
         fx, fy, rx, ry = symbols('fx, fy, rx, ry')
         z = Matrix([[sympy.sqrt((fx - x) ** 2 + (fy - y) ** 2)],
-                    [sympy.sqrt((rx - x) ** 2 + (ry - y) ** 2)]])
+                    [sympy.sqrt((rx - x) ** 2 + (ry - y) ** 2)],
+                    [sympy.atan2(fy - y, fx - x) - theta]])
         print(z.jacobian(Matrix([x, y, theta])))
 
     def JH(self, state, landmarks):
         x, y, _ = state
         f_x, f_y, r_x, r_y = landmarks
 
-        f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
-        r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
+        f_hyp = (f_x - x)**2 + (f_y - y)**2
+        r_hyp = (r_x - x)**2 + (r_y - y)**2
+        f_dist = np.sqrt(f_hyp)
+        r_dist = np.sqrt(r_hyp)
 
         JH = np.array([[(-f_x + x)/f_dist, (-f_y + y)/f_dist, 0],
-                       [(-r_x + x)/r_dist, (-r_y + y)/r_dist, 0]])
-        return JH
+                       [(-r_x + x)/r_dist, (-r_y + y)/r_dist, 0],
+                       [-(-f_y + y)/f_hyp, -(f_x - x)/f_hyp, -1]])
+        return JH.astype(float)
 
     def Hx(self, state, landmarks):
         x, y, theta = state
@@ -115,16 +121,18 @@ class EKFRobot(EKF):
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
         r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
 
-        Hx = np.array([f_dist, r_dist, theta])
+        Hx = np.array([f_dist,
+                       r_dist,
+                       theta])
         return Hx
 
     def residual(self, a, b):
         """ compute residual (a-b) between measurements containing
         [range, bearing]. Bearing is normalized to [-pi, pi)"""
         y = a - b
-        y[1] = y[1] % (2 * np.pi)  # force in range [0, 2 pi)
-        if y[1] > np.pi:  # move to [-pi, pi)
-            y[1] -= 2 * np.pi
+        y[2] = y[2] % (2 * np.pi)  # force in range [0, 2 pi)
+        if y[2] > np.pi:  # move to [-pi, pi)
+            y[2] -= 2 * np.pi
         return y
 
     def z_landmark(self, landmarks):
@@ -133,24 +141,25 @@ class EKFRobot(EKF):
 
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
         r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
-        z = np.array([[f_dist + np.random.randn() * LASER_STD],
-                      [r_dist + np.random.randn() * LASER_STD],
-                      [theta + np.random.randn() * IMU_STD]])
+        z = np.array([f_dist + np.random.randn() * LASER_STD,
+                      r_dist + np.random.randn() * LASER_STD,
+                      theta + np.random.randn() * IMU_STD])
         return z
 
     def ekf_update(self, z, landmarks):
         self.update(z, HJacobian=self.JH, Hx=self.Hx, residual=self.residual,
-                    args=(landmarks), hx_args=(landmarks))
+                    args=landmarks, hx_args=landmarks)
 
     def run_localization(self, initial_state, u, dt=1, step=10, ellipse_step=20):
         x, y, theta = initial_state
-        self.x = np.array([[x, y, theta]]).T
+        self.x = np.array([x, y, theta]).T
         self.P = np.diag([.1, .1, .1])
-        self.R = np.diag([LASER_STD, IMU_STD])
+        self.R = np.diag([LASER_STD, LASER_STD, IMU_STD])
 
         plt.figure()
         track = []
         for i in range(200):
+            assert self.x.shape == (3,)
             self._drive(u, dt/10)
             track.append(self.x)
             if i % step == 0:
@@ -158,16 +167,18 @@ class EKFRobot(EKF):
 
                 if i % ellipse_step == 0:
                     plot_covariance_ellipse(
-                        (self.x[0, 0], self.x[1, 0]), self.P[0:2, 0:2],
+                        (self.x[0], self.x[1]), self.P[0:2, 0:2],
                          std=6, facecolor='k', alpha=0.3)
 
-                landmarks = (f_x, f_y, r_x, r_y) = self._reflect(self.x[2, 0])
+                landmarks = self._reflect(self.x[2])
+                print(self.x[2])
+                print(landmarks)
                 z = self.z_landmark(landmarks)
                 self.ekf_update(z, landmarks)
 
                 if i % ellipse_step == 0:
                     plot_covariance_ellipse(
-                        (self.x[0, 0], self.x[1, 0]), self.P[0:2, 0:2],
+                        (self.x[0], self.x[1]), self.P[0:2, 0:2],
                         std=6, facecolor='g', alpha=0.8)
 
         track = np.array(track)
@@ -212,16 +223,14 @@ class EKFRobot(EKF):
 
         # fx, fy, rx, ry
         landmarks = []
-        for laser in [front_laser, right_laser]:
+        for i, laser in enumerate([front_laser, right_laser]):
             for border in self.map_borders:
                 reflection_point = laser.intersection(border)
                 if not reflection_point.is_empty:
-                    landmarks.append(reflection_point.x)
-                    landmarks.append(reflection_point.y)
+                    landmarks.extend([reflection_point.x, reflection_point.y])
                     break
 
-        assert len(landmarks) == 4
-        return landmarks
+        return np.array(landmarks).astype(float)
 
     def plot_env(self):
         fig, ax = plt.subplots(figsize=(7.5, 5))
@@ -247,7 +256,7 @@ class EKFRobot(EKF):
 
 def main():
     initial_state = (375., 250., 15.)
-    u = [10., 10.]
+    u = [.2, .1]
     robot = EKFRobot(initial_state)
     robot.run_localization(initial_state, u)
 
