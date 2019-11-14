@@ -75,8 +75,8 @@ class EKFRobot(EKF):
 
         central_vel = self.wheel_radius * (left_vel + right_vel) / 2
         dtheta = -(self.wheel_radius / self.width) * (right_vel - left_vel) * dt
-        dx = central_vel * np.sin(math.radians(self.x[2])) * dt
-        dy = central_vel * np.cos(math.radians(self.x[2])) * dt
+        dx = central_vel * np.sin(math.radians(x[2])) * dt
+        dy = central_vel * np.cos(math.radians(x[2])) * dt
 
         du = np.array([dx, dy, math.degrees(dtheta)])
         return x + du
