@@ -67,15 +67,30 @@ class EKFRobot(EKF):
 
         self.plot_track = []
 
-    def _drive(self, u, dt=1):
+    def _drive(self, x, u, dt=1):
         left_vel, right_vel = u
+        # maybe???
+        left_vel += np.random.randn() * MOTOR_STD
+        right_vel += np.random.randn() * MOTOR_STD
+
         central_vel = self.wheel_radius * (left_vel + right_vel) / 2
         dtheta = -(self.wheel_radius / self.width) * (right_vel - left_vel) * dt
         dx = central_vel * np.sin(math.radians(self.x[2])) * dt
         dy = central_vel * np.cos(math.radians(self.x[2])) * dt
 
         du = np.array([dx, dy, math.degrees(dtheta)])
-        self.x += du
+        return x + du
+
+    def _drive_predict(self, x, u, dt=1):
+        left_vel, right_vel = u
+
+        central_vel = self.wheel_radius * (left_vel + right_vel) / 2
+        dtheta = -(self.wheel_radius / self.width) * (right_vel - left_vel) * dt
+        dx = central_vel * np.sin(math.radians(self.x[2])) * dt
+        dy = central_vel * np.cos(math.radians(self.x[2])) * dt
+
+        du = np.array([dx, dy, math.degrees(dtheta)])
+        return x + du
 
     def _init_map_borders(self):
         west_border = LineString([(0,0), (0, MAP_HEIGHT)])
@@ -133,11 +148,11 @@ class EKFRobot(EKF):
             y[2] -= 2 * np.pi
         return y
 
-    def sensor_read(self, landmarks):
+    def sensor_read(self, state, landmarks):
         """
         Simulate noisy sensor readings.
         """
-        x, y, theta = self.x
+        x, y, theta = state
         f_x, f_y, r_x, r_y = landmarks
 
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
@@ -175,7 +190,6 @@ class EKFRobot(EKF):
 
         return f_x, f_y
 
-
     def _reflect(self, theta):
         """
         Find reflection points of laser range finders.
@@ -201,7 +215,7 @@ class EKFRobot(EKF):
         """
         Update localization using control inputs.
         """
-        self._drive(u, dt)
+        self.x = self._drive_predict(self.x, u, dt)
 
         self.subs[self.theta] = self.x[2]
         self.subs[self.wl] = u[0]
@@ -224,28 +238,31 @@ class EKFRobot(EKF):
                     args=landmarks, hx_args=landmarks)
 
     def run_localization(self, initial_state, u, dt=1):
-        x, y, theta = initial_state
-        self.x = np.array([x, y, theta]).T
+        # x, y, theta = initial_state
+        # self.x = np.array([x, y, theta]).T
+        self.x = np.array([100., 100., 45.]).T
         self.P = np.diag([.1, .1, .1]) # initial covariance
         self.R = np.diag([LASER_STD, LASER_STD, IMU_STD])**2
 
         plt.figure()
         track = []
 
+        actual_pos = self.x.copy()
+
         for i in range(10):
             assert self.x.shape == (3,)
 
-            track.append(self.x)
-            self.plot_track.append(self.x)
-
-            self._drive(u[i], dt)
+            # sim_pos = self._drive_predict(sim_pos, u[i], dt)
+            actual_pos = self._drive(actual_pos, u[i], dt)
             self.predict(u[i])
+            track.append(self.x)
+            self.plot_track.append(actual_pos)
 
             plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
                             std=6, facecolor='k', alpha=0.3)
 
-            landmarks = self._reflect(self.x[2])
-            z = self.sensor_read(landmarks)
+            landmarks = self._reflect(actual_pos[2])
+            z = self.sensor_read(actual_pos, landmarks)
             self.ekf_update(z, landmarks)
 
             plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
@@ -253,9 +270,10 @@ class EKFRobot(EKF):
 
         track = np.array(track)
         self.plot_track = np.array(self.plot_track)
-        plt.plot(track[:, 0], track[:, 1], color='k', lw=2)
+        plt.plot(track[:, 0], track[:, 1], color='black', lw=2)
         plt.grid()
         plt.title("EKF Robot localization")
+        plt.plot(self.plot_track[:, 0], self.plot_track[:, 1], color='r', lw=2)
 
     def plot_env(self):
         fig, ax = plt.subplots(figsize=(7.5, 5))
@@ -283,18 +301,18 @@ class EKFRobot(EKF):
 
 def main():
     nonlinear_traj = True
-    initial_state = (200, 300., 45)
+    initial_state = (200, 300., 90)
 
     u = []
     if nonlinear_traj:
         for i in range(10):
             if i < 5:
-                u.append([0.8, 0.2])
+                u.append([1.5, 0.2])
             else:
-                u.append([0.4, 1])
+                u.append([0.8, 4.2])
     else:
         for i in range(10):
-            u.append([0.6, 0.8])
+            u.append([2, 2])
 
     robot = EKFRobot(initial_state)
     robot.run_localization(initial_state, u)
