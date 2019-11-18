@@ -8,6 +8,7 @@ from matplotlib.transforms import Affine2D
 from shapely.geometry import LineString
 from filterpy.kalman import ExtendedKalmanFilter as EKF
 from filterpy.stats import plot_covariance
+import time
 
 
 # robot specs in mm
@@ -355,7 +356,7 @@ class EKFRobot(EKF):
         self.x = np.array([x, y, theta]).T
 
         # Initialize state covariance.
-        self.P = np.diag([.1, .1, .1])
+        self.P = np.diag([.15, .15, .15])
 
         # Sensor covariance matrix.
         self.R = np.diag([LASER_STD, LASER_STD, IMU_STD])**2
@@ -373,11 +374,21 @@ class EKFRobot(EKF):
         else:
             total_scans = 10
 
-        counter = 0
-        plt.figure()
-        plt.grid()
-        self.esti_states = [self.x]
-        self.true_states.append(true_state)
+        predict_error = update_error = counter = 0
+        fig, ax = plt.subplots(figsize=(7.5, 5))
+        ax.grid()
+
+        begin = time.time()
+
+        """
+        ==================== Performance Metrics ============================
+        
+                        time: computation time for EKF completion
+            prediction error: MSE of predicted state and true state at time t
+                update error: MSE of estimated state and true state at time t
+                
+        ======================================================================        
+        """
 
         for t in range(total_scans):
             assert self.x.shape == (3,)
@@ -395,8 +406,10 @@ class EKFRobot(EKF):
             self._predict(u[t], dt_n)
 
             # Store estimated and true states to plot later.
-            self.esti_states.append(self.x)
             self.true_states.append(true_state)
+            self.esti_states.append(self.x)
+
+            predict_error += np.sum(np.sqrt((true_state - self.x)**2))
 
             # Plot pre-observation belief state. Covariance ellipse.
             if counter % 10 == 0 or not increased_resolution:
@@ -410,11 +423,19 @@ class EKFRobot(EKF):
             # Update estimated state based on noisy sensor readings.
             self._ekf_update(z, landmarks)
 
+            update_error += np.sum(np.sqrt((true_state - self.x)**2))
+
             # Plot post-observation belief state. Covariance ellipse.
             if counter % 10 == 0 or not increased_resolution:
                 plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
                                 std=6, facecolor='g', alpha=0.8)
             counter += 1
+
+        end = time.time()
+
+        print("Total time for EKF: {}".format(end-begin))
+        print("Average predict error was: {}".format(predict_error/counter))
+        print("Average update error was: {}".format(update_error/counter))
 
         # Plot the true state and estimated state trajectories.
         self.esti_states = np.array(self.esti_states)
@@ -461,6 +482,7 @@ def main():
 
     # ====================== SIMULATION INTERFACE =========================
     initial_state = (100, 100., 60.)
+    # initial_state = (250, 250., 60.)
     nonlinear_traj = False
     increased_resolution = False
     unknown_location = False
