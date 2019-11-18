@@ -16,17 +16,12 @@ Designed for students who have wondered about inner workings of Roomba, selfie d
 
 ### Topics
 - MDPs and Policies
-- Bayesian Filtering
-- Particle Filtering
-- Path and Trajectory Planning
-- Planning with PRM / RRT
-- Discretization
-- Function Approximation
-- LQR
-- Kalman Filtering
+- Bayesian/Particle/Kalman Filtering
 - EKF, UKF
+- Planning with PRM / RRT
+- Function Approximation
 - Forward, Inverse Kinematics
 - Differential Kinematics
-- Model Predictive Control
+- LQR, MPC
 - Reinforcement Learning
 - Optimization
