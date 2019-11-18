@@ -1,8 +1,8 @@
-import math
 import numpy as np
 import sympy
 from sympy.abc import x, y, theta
 from sympy import symbols, Matrix
+from math import degrees, radians
 import matplotlib.pyplot as plt
 from matplotlib.transforms import Affine2D
 from shapely.geometry import LineString
@@ -10,19 +10,19 @@ from filterpy.kalman import ExtendedKalmanFilter as EKF
 from filterpy.stats import plot_covariance
 
 
-# robot specs, in mm
+# robot specs in mm
 WHEEL_RADIUS = 25
 ROBOT_WIDTH = 90
 ROBOT_LENGTH = 100
 
-# rad/s
+# max motor speed 60 RPM --> 6.3 rad/s
 MOTOR_MAX = 6.3
 
-# map, in mm
+# map dimensions in mm
 MAP_WIDTH = 750
 MAP_HEIGHT = 500
 
-# system specs
+# variance specs
 LASER_STD = 0.03*50  # assumption --> std of 3% of 50mm
 IMU_STD = 1  # degree
 MOTOR_STD = MOTOR_MAX*0.05  # 5% of motor max
@@ -33,82 +33,143 @@ def add_angles(theta1, theta2):
 
 
 class EKFRobot(EKF):
+    """
+        Two-wheeled non-holonomic differential drive robot.
+        Uses Extended Kalman Filter for state estimation.
+
+        Sensors:
+            Two laser range sensors - VL53L0X
+            noise: std of 3% of 50mm
+
+            One inertial measurment unit - MPU-9250
+            noise: std of 1 degree
+
+        Motors:
+            Two b-directional continuous rotation servos - FS90R
+            Capable of -60 to 60 RPM
+            noise: std of 5% of Motor Max
+    """
     def __init__(self, initial_state):
         EKF.__init__(self, 3, 3, 2)
         self.width = ROBOT_WIDTH
         self.length = ROBOT_LENGTH
         self.wheel_radius = WHEEL_RADIUS
 
-        # x, y, theta
+        # Robot state definition. (x, y, theta)
+        # Estimated state of the robot.
         self.x = np.array([initial_state[0],
                            initial_state[1],
                            initial_state[2]]).T
 
-        x, y, theta, dt, wr, wl = symbols(
-            'x, y, theta, dt, wr, wl')
+        # Sympy symbols for Jacobian computation.
+        x, y, theta, dt, wr, wl = symbols('x, y, theta, dt, wr, wl')
 
-        # Motion Model
         """
+                       Motion Model
+        ---------------------------------------------- 
             x = x + R(wr + wl)/2 * sin(theta) * dt
             y = y + R(wr + wl)/2 * cos(theta) * dt
             theta = theta + (R/W) * (wr - wl) * dt
+        ----------------------------------------------
         """
+
+        # Motion model in sympy matrix.
         f_xu = Matrix([[x + sympy.sin(theta) * (self.wheel_radius * (wr + wl) / 2) * dt],
                        [y + sympy.cos(theta) * (self.wheel_radius * (wr + wl) / 2) * dt],
                        [theta + (self.wheel_radius / self.width) * (wr - wl) * dt]])
 
+        # Jacobians of motion model w.r. states and control inputs.
         self.Fj = f_xu.jacobian(Matrix([x, y, theta]))
         self.Wj = f_xu.jacobian(Matrix([wr, wl]))
 
+        # Initialize variable substitutions.
         self.subs = {x: 0, y: 0, theta: 0, dt: 1, wr: 0, wl: 0}
+        # Allow for dictionary indexing in later functions.
         self.x_x, self.y_y, self.theta, self.time, self.wr, self.wl = x, y, theta, dt, wr, wl
 
         self.map_borders = self._init_map_borders()
 
-        self.plot_track = []
+        self.esti_states = []
+        self.true_states = []
 
-    def _drive(self, x, u, dt=1):
-        left_vel, right_vel = u
-        # maybe???
-        left_vel += np.random.randn() * MOTOR_STD
-        right_vel += np.random.randn() * MOTOR_STD
+    def _drive_real(self, x_true, u, dt=1):
+        """
+        Simulate driving with control inputs for true states.
+        Generate realistic control noise according to motor covariance.
 
-        central_vel = self.wheel_radius * (left_vel + right_vel) / 2
-        dtheta = -(self.wheel_radius / self.width) * (right_vel - left_vel) * dt
-        dx = central_vel * np.sin(math.radians(x[2])) * dt
-        dy = central_vel * np.cos(math.radians(x[2])) * dt
+        :param x_true: The true current state of the robot. (x, y, theta)_true
+        :param u: The control inputs. (wl, wr)
+        :param dt: Time in between control inputs.
+        :return: New true state of robot.
+        """
+        wl, wr = u
 
-        du = np.array([dx, dy, math.degrees(dtheta)])
-        return x + du
+        # Add zero mean Gaussian noise.
+        wl += np.random.randn() * MOTOR_STD
+        wr += np.random.randn() * MOTOR_STD
 
-    def _drive_predict(self, x, u, dt=1):
-        left_vel, right_vel = u
+        central_vel = self.wheel_radius * (wl + wr) / 2
+        dtheta = -(self.wheel_radius / self.width) * (wr - wl) * dt
+        dx = central_vel * np.sin(radians(x_true[2])) * dt
+        dy = central_vel * np.cos(radians(x_true[2])) * dt
 
-        central_vel = self.wheel_radius * (left_vel + right_vel) / 2
-        dtheta = -(self.wheel_radius / self.width) * (right_vel - left_vel) * dt
-        dx = central_vel * np.sin(math.radians(self.x[2])) * dt
-        dy = central_vel * np.cos(math.radians(self.x[2])) * dt
+        du = np.array([dx, dy, degrees(dtheta)])
+        return x_true + du
 
-        du = np.array([dx, dy, math.degrees(dtheta)])
-        return x + du
+    def _drive_predict(self, x_predicted, u, dt=1):
+        """
+        Simulate driving with control inputs for predicted states.
+        Predicting with no control noise.
+
+        :param x_predicted: The current predicted state of the robot. (x, y, theta)_predicted
+        :param u: The control inputs. (wl, wr)
+        :param dt: Time in between control inputs.
+        :return: New predicted state of robot.
+        """
+        wl, wr = u
+
+        central_vel = self.wheel_radius * (wl + wr) / 2
+        dtheta = -(self.wheel_radius / self.width) * (wr - wl) * dt
+        dx = central_vel * np.sin(radians(x_predicted[2])) * dt
+        dy = central_vel * np.cos(radians(x_predicted[2])) * dt
+
+        du = np.array([dx, dy, degrees(dtheta)])
+        return x_predicted + du
 
     def _init_map_borders(self):
-        west_border = LineString([(0,0), (0, MAP_HEIGHT)])
-        east_border = LineString([(MAP_WIDTH,0), (MAP_WIDTH, MAP_HEIGHT)])
+        """
+        Initialize the map borders in terms of shapely linestrings.
+
+        :return: array of map borders
+        """
+        west_border = LineString([(0, 0), (0, MAP_HEIGHT)])
+        east_border = LineString([(MAP_WIDTH, 0), (MAP_WIDTH, MAP_HEIGHT)])
         north_border = LineString([(0, MAP_HEIGHT), (MAP_WIDTH, MAP_HEIGHT)])
         south_border = LineString([(0, 0), (MAP_WIDTH, 0)])
         return [west_border, east_border, north_border, south_border]
 
     def _jh_jacobian_check(self):
+        """
+        Helper function that prints the symbolic Jacobian of sensor model.
+
+        Used only to aid in coding JH.
+        """
+
+        # Sympy symbols for laser range finder lengths in x and y.
         fx, fy, rx, ry = symbols('fx, fy, rx, ry')
+
+        # Sensor model.
         z = Matrix([[sympy.sqrt((fx - x) ** 2 + (fy - y) ** 2)],
                     [sympy.sqrt((rx - x) ** 2 + (ry - y) ** 2)],
                     [sympy.atan2(fy - y, fx - x) - theta]])
         print(z.jacobian(Matrix([x, y, theta])))
 
-    def JH(self, state, landmarks):
+    def _JH(self, state, landmarks):
         """
-        Compute Jacobian of Sensor Readings
+        Computes the Jacobian of the sensor model H(x) w.r. to state.
+        :param state: current estimated state
+        :param landmarks: laser range finder distances in x and y
+        :return JH: Jacobian of H(x) w.r. to x
         """
         x, y, _ = state
         f_x, f_y, r_x, r_y = landmarks
@@ -118,18 +179,26 @@ class EKFRobot(EKF):
         f_dist = np.sqrt(f_hyp)
         r_dist = np.sqrt(r_hyp)
 
+        # Obtained from self._jh_jacobian_check()
         JH = np.array([[(-f_x + x)/f_dist, (-f_y + y)/f_dist, 0],
                        [(-r_x + x)/r_dist, (-r_y + y)/r_dist, 0],
                        [-(-f_y + y)/f_hyp, -(f_x - x)/f_hyp, -1]])
         return JH.astype(float)
 
-    def Hx(self, state, landmarks):
+    def _Hx(self, state, landmarks):
         """
-        Convert current state to sensor readings.
+        Sensor model H(x).
+        Converts current state to sensor readings.
+        :param state: current true state
+        :param landmarks: laser range finder distances in x and y
+        :return Hx: sensor outputs [front laser distance,
+                                    right laser distance,
+                                    angular pose]
         """
         x, y, theta = state
         f_x, f_y, r_x, r_y = landmarks
 
+        # Calculate laser distances.
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
         r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
 
@@ -138,25 +207,35 @@ class EKFRobot(EKF):
                        theta])
         return Hx
 
-    def residual(self, z, hx):
+    def _residual(self, z, hx):
         """
-        Compute residual: y = z-h(x)
+        Compute the residual of sensors, y = z-h(x)
+        Make sure that angles are within range 0-360 deg.
+
+        :param z: sensor readings
+        :param hx: predicted sensor readings from sensor model
+        :return y: residual
         """
         y = z - hx
-        y[2] = y[2] % (2 * np.pi)  # force in range [0, 2 pi)
-        if y[2] > np.pi:  # move to [-pi, pi)
-            y[2] -= 2 * np.pi
+        y[2] = y[2] % 360
         return y
 
-    def sensor_read(self, state, landmarks):
+    def _sensor_read(self, state, landmarks):
         """
-        Simulate noisy sensor readings.
+        Simulate noisy sensor readings z = [front laser distance,
+                                            right laser distance,
+                                            IMU angular pose]
+        :param state: current state
+        :param landmarks: laser range finder distances in x and y
         """
         x, y, theta = state
         f_x, f_y, r_x, r_y = landmarks
 
+        # Calculate laser distances.
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
         r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
+
+        # Simulate sensor noise.
         z = np.array([f_dist + np.random.randn() * LASER_STD,
                       r_dist + np.random.randn() * LASER_STD,
                       theta + np.random.randn() * IMU_STD])
@@ -164,45 +243,62 @@ class EKFRobot(EKF):
 
     def _line_calc(self, theta, args=False):
         """
-        Helper function for _reflect
+        Helper function for _reflect.
+        Calculates the slope of the laser dependent on the theta
+        and then calculates coordinates for the laser line.
+
+        Coordinates are used with shapely's LineString class to
+        find the intersection point between the laser and map border.
+
+        :param theta: the angular pose of robot
+        :param args: override using estimated state
         """
-        x, y, _ = self.x
+        # Use current estimated state unless specified otherwise.
+        x1, y1, _ = self.x
         if args:
-            x, y = args
+            x1, y1 = args
 
-        # Special Cases
+        # Special Cases that make calculating slope impossible
         if theta == 0:
-            return x, MAP_HEIGHT
+            return x1, MAP_HEIGHT
         elif theta == 180:
-            return x, 0
+            return x1, 0
         elif theta == 90:
-            return MAP_WIDTH, y
+            return MAP_WIDTH, y1
         elif theta == 270:
-            return 0, y
+            return 0, y1
 
-        slope = 1.0 / np.tan(math.radians(theta))
+        slope = 1.0 / np.tan(radians(theta))
+
+        # Arbitrary value that lies outside map border
         if theta < 180:
-            f_x = 800  # arbitrary value past map border
-            f_y = slope * f_x + (-slope * x + y)
+            x2 = 800
         else:
-            f_x = -100  # arbitrary value past map border
-            f_y = slope * f_x + (-slope * x + y)
+            x2 = -100
 
-        return f_x, f_y
+        y2 = slope * x2 + (-slope * x1 + y1)
+
+        return x2, y2
 
     def _reflect(self, theta):
         """
-        Find reflection points of laser range finders.
+        Helper function for computing landmark points.
+        Landmark points are the x and y coordinates of both laser range finders.
+
+        :param theta: robot angular pose
+        :return landmarks: return numpy array of laser distance in x and y
         """
+
+        # Calculate the lines regarding the front and right lasers.
         x, y, _ = self.x
         f_x, f_y = self._line_calc(theta)
         r_x, r_y = self._line_calc(add_angles(theta, 90))
         front_laser = LineString([(x, y), (f_x, f_y)])
         right_laser = LineString([(x, y), (r_x, r_y)])
 
-        # fx, fy, rx, ry
-        landmarks = []
-        for i, laser in enumerate([front_laser, right_laser]):
+        # Find the intersection between the lasers and map borders.
+        landmarks = []  # fx, fy, rx, ry
+        for laser in [front_laser, right_laser]:
             for border in self.map_borders:
                 reflection_point = laser.intersection(border)
                 if not reflection_point.is_empty:
@@ -211,16 +307,22 @@ class EKFRobot(EKF):
 
         return np.array(landmarks).astype(float)
 
-    def predict(self, u, dt=1):
+    def _predict(self, u, dt=1):
         """
-        Update localization using control inputs.
+
+        :param u: control inputs
+        :param dt: length of time control input is done
+        :return: updated covariance matrix
         """
+        # Predict next state.
         self.x = self._drive_predict(self.x, u, dt)
 
+        # Update Jacobian variable substitutions.
         self.subs[self.theta] = self.x[2]
         self.subs[self.wl] = u[0]
         self.subs[self.wr] = u[1]
 
+        # Calculate Jacobians.
         F = np.array(self.Fj.evalf(subs=self.subs)).astype(float)
         W = np.array(self.Wj.evalf(subs=self.subs)).astype(float)
 
@@ -230,78 +332,139 @@ class EKFRobot(EKF):
 
         self.P = np.dot(F, self.P).dot(F.T) + np.dot(W, R).dot(W.T)
 
-    def ekf_update(self, z, landmarks):
+    def _ekf_update(self, z, landmarks):
         """
-        Update localization using observation information.
+        Update state estimation using observation information.
+        Use noisy sensor readings, sensor model jacobian,
+        sensor reading predictions, and landmarks to update state.
+
+        Use filterpy library's EKF class to perform matrix operations.
+        Reference: https://github.com/rlabbe/filterpy
+
+        :param z: noisy sensor readings
+        :param landmarks: front and right laser distance in x and y
         """
-        self.update(z, HJacobian=self.JH, Hx=self.Hx, residual=self.residual,
+        self.update(z, HJacobian=self._JH, Hx=self._Hx, residual=self._residual,
                     args=landmarks, hx_args=landmarks)
 
-    def run_localization(self, initial_state, u, dt=1):
-        # x, y, theta = initial_state
-        # self.x = np.array([x, y, theta]).T
-        self.x = np.array([100., 100., 45.]).T
-        self.P = np.diag([.1, .1, .1]) # initial covariance
+    def run_localization(self, initial_state, u, dt=1,
+                         increased_resolution=False, unknown_location=False):
+
+        # Initialize
+        x, y, theta = initial_state
+        self.x = np.array([x, y, theta]).T
+
+        # Initialize state covariance.
+        self.P = np.diag([.1, .1, .1])
+
+        # Sensor covariance matrix.
         self.R = np.diag([LASER_STD, LASER_STD, IMU_STD])**2
 
+        # If robot starts with unknown location assign a random state.
+        if unknown_location:
+            true_state = np.array([np.random.uniform(100, MAP_WIDTH-100),
+                                   np.random.uniform(100, MAP_HEIGHT-100),
+                                   np.random.uniform(0, 360)]).T
+        else:
+            true_state = self.x.copy()
+
+        if increased_resolution:
+            total_scans = 100
+        else:
+            total_scans = 10
+
+        counter = 0
         plt.figure()
-        track = []
+        plt.grid()
+        self.esti_states = [self.x]
+        self.true_states.append(true_state)
 
-        actual_pos = self.x.copy()
-
-        for i in range(10):
+        for t in range(total_scans):
             assert self.x.shape == (3,)
 
-            # sim_pos = self._drive_predict(sim_pos, u[i], dt)
-            actual_pos = self._drive(actual_pos, u[i], dt)
-            self.predict(u[i])
-            track.append(self.x)
-            self.plot_track.append(actual_pos)
+            if increased_resolution:
+                t = t % 10
+                dt_n = dt / 10
+            else:
+                dt_n = dt
 
-            plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
-                            std=6, facecolor='k', alpha=0.3)
+            # Update the true state using noisy control inputs.
+            true_state = self._drive_real(true_state, u[t], dt_n)
 
-            landmarks = self._reflect(actual_pos[2])
-            z = self.sensor_read(actual_pos, landmarks)
-            self.ekf_update(z, landmarks)
+            # Predict estimated state using expected control inputs.
+            self._predict(u[t], dt_n)
 
-            plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
-                            std=6, facecolor='g', alpha=0.8)
+            # Store estimated and true states to plot later.
+            self.esti_states.append(self.x)
+            self.true_states.append(true_state)
 
-        track = np.array(track)
-        self.plot_track = np.array(self.plot_track)
-        plt.plot(track[:, 0], track[:, 1], color='black', lw=2)
-        plt.grid()
-        plt.title("EKF Robot localization")
-        plt.plot(self.plot_track[:, 0], self.plot_track[:, 1], color='r', lw=2)
+            # Plot pre-observation belief state. Covariance ellipse.
+            if counter % 10 == 0 or not increased_resolution:
+                plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
+                                std=6, facecolor='k', alpha=0.3)
+
+            # Get noisy sensor readings based on robot true state.
+            landmarks = self._reflect(true_state[2])
+            z = self._sensor_read(true_state, landmarks)
+
+            # Update estimated state based on noisy sensor readings.
+            self._ekf_update(z, landmarks)
+
+            # Plot post-observation belief state. Covariance ellipse.
+            if counter % 10 == 0 or not increased_resolution:
+                plot_covariance((self.x[0], self.x[1]), self.P[0:2, 0:2],
+                                std=6, facecolor='g', alpha=0.8)
+            counter += 1
+
+        # Plot the true state and estimated state trajectories.
+        self.esti_states = np.array(self.esti_states)
+        self.true_states = np.array(self.true_states)
+        plt.plot(self.esti_states[:, 0], self.esti_states[:, 1], color='r', lw=2)
+        plt.plot(self.true_states[:, 0], self.true_states[:, 1], color='black', lw=2)
+        plt.plot(self.esti_states[:, 0], self.esti_states[:, 1], 'ro')
+        plt.plot(self.true_states[:, 0], self.true_states[:, 1], 'bo')
 
     def plot_env(self):
+        """
+        Plot the true robot trajectory and estimated trajectory.
+        """
         fig, ax = plt.subplots(figsize=(7.5, 5))
-        ax.grid()
         plt.xlim((0, MAP_WIDTH))
         plt.ylim((0, MAP_HEIGHT))
 
         ts = ax.transData
-        for state in self.plot_track:
+        for state in self.true_states:
             x, y, theta = state
 
+            # Plot the robot body.
             frame = plt.Rectangle((x - 45, y - 75), self.width, self.length,
                                   facecolor='cyan', linewidth=1, edgecolor='magenta')
             tr = Affine2D().rotate_deg_around(x, y, -theta)
             t = tr + ts
             frame.set_transform(t)
             ax.add_patch(frame)
-            ax.plot(x, y, 'bo', markersize=5)
 
+            # Plot the lasers.
             f_x, f_y = self._line_calc(theta, (x, y))
             r_x, r_y = self._line_calc(add_angles(theta, 90), (x, y))
-            ax.plot([x, f_x], [y, f_y], 'r--')
-            ax.plot([x, r_x], [y, r_y], 'r--')
+            ax.plot([x, f_x], [y, f_y], 'r--', lw=1)
+            ax.plot([x, r_x], [y, r_y], 'r--', lw=1)
+
+        # Plot the true state and estimated state trajectories.
+        plt.plot(self.esti_states[:, 0], self.esti_states[:, 1], color='r', lw=2)
+        plt.plot(self.true_states[:, 0], self.true_states[:, 1], color='black', lw=2)
+        plt.plot(self.esti_states[:, 0], self.esti_states[:, 1], 'ro')
+        plt.plot(self.true_states[:, 0], self.true_states[:, 1], 'bo')
 
 
 def main():
-    nonlinear_traj = True
-    initial_state = (200, 300., 90)
+
+    # ====================== SIMULATION INTERFACE =========================
+    initial_state = (100, 100., 60.)
+    nonlinear_traj = False
+    increased_resolution = False
+    unknown_location = False
+    # =====================================================================
 
     u = []
     if nonlinear_traj:
@@ -315,7 +478,9 @@ def main():
             u.append([2, 2])
 
     robot = EKFRobot(initial_state)
-    robot.run_localization(initial_state, u)
+    robot.run_localization(initial_state, u,
+                           increased_resolution=increased_resolution,
+                           unknown_location=unknown_location)
     robot.plot_env()
     plt.show()
 
