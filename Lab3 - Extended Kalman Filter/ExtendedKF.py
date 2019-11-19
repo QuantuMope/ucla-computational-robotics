@@ -25,7 +25,7 @@ MAP_HEIGHT = 500
 
 # variance specs
 LASER_STD = 0.03*50  # assumption --> std of 3% of 50mm
-IMU_STD = 1  # degree
+IMU_STD = 1  # degree, degree/sec
 MOTOR_STD = MOTOR_MAX*0.05  # 5% of motor max
 
 
@@ -43,7 +43,8 @@ class EKFRobot(EKF):
             noise: std of 3% of 50mm
 
             One inertial measurment unit - MPU-9250
-            noise: std of 1 degree
+            Measures angular pose theta and angular velocity omega
+            noise: std of 1 degree, 1 degree/sec respectively
 
         Motors:
             Two b-directional continuous rotation servos - FS90R
@@ -51,7 +52,7 @@ class EKFRobot(EKF):
             noise: std of 5% of Motor Max
     """
     def __init__(self, initial_state):
-        EKF.__init__(self, 3, 3, 2)
+        EKF.__init__(self, 3, 4, 2)
         self.width = ROBOT_WIDTH
         self.length = ROBOT_LENGTH
         self.wheel_radius = WHEEL_RADIUS
@@ -158,11 +159,13 @@ class EKFRobot(EKF):
 
         # Sympy symbols for laser range finder lengths in x and y.
         fx, fy, rx, ry = symbols('fx, fy, rx, ry')
+        wr, wl = symbols('wr, wl')
 
         # Sensor model.
         z = Matrix([[sympy.sqrt((fx - x) ** 2 + (fy - y) ** 2)],
                     [sympy.sqrt((rx - x) ** 2 + (ry - y) ** 2)],
-                    [sympy.atan2(fy - y, fx - x) - theta]])
+                    [sympy.atan2(fy - y, fx - x) - theta],
+                    [(self.wheel_radius / self.width) * (wr - wl)]])
         print(z.jacobian(Matrix([x, y, theta])))
 
     def _JH(self, state, landmarks):
@@ -173,7 +176,7 @@ class EKFRobot(EKF):
         :return JH: Jacobian of H(x) w.r. to x
         """
         x, y, _ = state
-        f_x, f_y, r_x, r_y = landmarks
+        f_x, f_y, r_x, r_y, _, _ = landmarks
 
         f_hyp = (f_x - x)**2 + (f_y - y)**2
         r_hyp = (r_x - x)**2 + (r_y - y)**2
@@ -183,7 +186,8 @@ class EKFRobot(EKF):
         # Obtained from self._jh_jacobian_check()
         JH = np.array([[(-f_x + x)/f_dist, (-f_y + y)/f_dist, 0],
                        [(-r_x + x)/r_dist, (-r_y + y)/r_dist, 0],
-                       [-(-f_y + y)/f_hyp, -(f_x - x)/f_hyp, -1]])
+                       [-(-f_y + y)/f_hyp, -(f_x - x)/f_hyp, -1],
+                       [0, 0, 0]])  # omega not dependent on state
         return JH.astype(float)
 
     def _Hx(self, state, landmarks):
@@ -191,21 +195,26 @@ class EKFRobot(EKF):
         Sensor model H(x).
         Converts current state to sensor readings.
         :param state: current true state
-        :param landmarks: laser range finder distances in x and y
+        :param landmarks: laser range finder distances in x and y and wheel velocities
         :return Hx: sensor outputs [front laser distance,
                                     right laser distance,
                                     angular pose]
         """
         x, y, theta = state
-        f_x, f_y, r_x, r_y = landmarks
+        f_x, f_y, r_x, r_y, w_l, w_r = landmarks
 
         # Calculate laser distances.
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
         r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
 
+        # Calculate robot pose angular velocity.
+        omega = (self.wheel_radius / self.width) * (w_r - w_l)
+
         Hx = np.array([f_dist,
                        r_dist,
-                       theta])
+                       theta,
+                       omega])
+
         return Hx
 
     def _residual(self, z, hx):
@@ -227,19 +236,22 @@ class EKFRobot(EKF):
                                             right laser distance,
                                             IMU angular pose]
         :param state: current state
-        :param landmarks: laser range finder distances in x and y
+        :param landmarks: laser range finder distances in x and y and wheel velocities
         """
         x, y, theta = state
-        f_x, f_y, r_x, r_y = landmarks
+        f_x, f_y, r_x, r_y, w_l, w_r = landmarks
 
-        # Calculate laser distances.
+        # Calculate laser distances and robot angular pose velocity
         f_dist = np.sqrt((f_x - x)**2 + (f_y - y)**2)
         r_dist = np.sqrt((r_x - x)**2 + (r_y - y)**2)
+        omega = (self.wheel_radius / self.width) * (w_r - w_l)
 
         # Simulate sensor noise.
         z = np.array([f_dist + np.random.randn() * LASER_STD,
                       r_dist + np.random.randn() * LASER_STD,
-                      theta + np.random.randn() * IMU_STD])
+                      theta + np.random.randn() * IMU_STD,
+                      omega + np.random.randn() * IMU_STD])
+
         return z
 
     def _line_calc(self, theta, args=False):
@@ -306,7 +318,7 @@ class EKFRobot(EKF):
                     landmarks.extend([reflection_point.x, reflection_point.y])
                     break
 
-        return np.array(landmarks).astype(float)
+        return landmarks
 
     def _predict(self, u, dt=1):
         """
@@ -343,7 +355,7 @@ class EKFRobot(EKF):
         Reference: https://github.com/rlabbe/filterpy
 
         :param z: noisy sensor readings
-        :param landmarks: front and right laser distance in x and y
+        :param landmarks: front and right laser distance in x and y and wheel velocities
         """
         self.update(z, HJacobian=self._JH, Hx=self._Hx, residual=self._residual,
                     args=landmarks, hx_args=landmarks)
@@ -359,7 +371,7 @@ class EKFRobot(EKF):
         self.P = np.diag([.15, .15, .15])
 
         # Sensor covariance matrix.
-        self.R = np.diag([LASER_STD, LASER_STD, IMU_STD])**2
+        self.R = np.diag([LASER_STD, LASER_STD, IMU_STD, IMU_STD])**2
 
         # If robot starts with unknown location assign a random state.
         if unknown_location:
@@ -390,7 +402,7 @@ class EKFRobot(EKF):
         ======================================================================        
         """
 
-        for t in range(total_scans):
+        for t in range(total_scans-1):
             assert self.x.shape == (3,)
 
             if increased_resolution:
@@ -417,6 +429,11 @@ class EKFRobot(EKF):
 
             # Get noisy sensor readings based on robot true state.
             landmarks = self._reflect(true_state[2])
+
+            # Add control inputs for IMU readings.
+            landmarks.append(u[t][0]), landmarks.append(u[t][1])
+            landmarks = np.array(landmarks).astype(float)
+
             z = self._sensor_read(true_state, landmarks)
 
             # Update estimated state based on noisy sensor readings.
@@ -482,11 +499,11 @@ class EKFRobot(EKF):
 def main():
 
     # ====================== SIMULATION INTERFACE =========================
-    initial_state = (100, 100., 60.)
-    # initial_state = (250, 250., 60.)
-    nonlinear_traj = True
+    # initial_state = (100, 100., 60.)
+    initial_state = (250, 250., 60.)
+    nonlinear_traj = False
     increased_resolution = False
-    unknown_location = True
+    unknown_location = False
     # =====================================================================
 
     u = []
