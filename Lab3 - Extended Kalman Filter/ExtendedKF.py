@@ -394,7 +394,6 @@ class EKFRobot(EKF):
             assert self.x.shape == (3,)
 
             if increased_resolution:
-                t = t % 10
                 dt_n = dt / 10
             else:
                 dt_n = dt
@@ -409,7 +408,7 @@ class EKFRobot(EKF):
             self.true_states.append(true_state)
             self.esti_states.append(self.x)
 
-            predict_error += np.sum(np.sqrt((true_state - self.x)**2))
+            predict_error += np.sum((true_state - self.x)**2)
 
             # Plot pre-observation belief state. Covariance ellipse.
             if counter % 10 == 0 or not increased_resolution:
@@ -423,7 +422,7 @@ class EKFRobot(EKF):
             # Update estimated state based on noisy sensor readings.
             self._ekf_update(z, landmarks)
 
-            update_error += np.sum(np.sqrt((true_state - self.x)**2))
+            update_error += np.sum((true_state - self.x)**2)
 
             # Plot post-observation belief state. Covariance ellipse.
             if counter % 10 == 0 or not increased_resolution:
@@ -466,6 +465,8 @@ class EKFRobot(EKF):
             ax.add_patch(frame)
 
             # Plot the lasers.
+            if theta < 0:
+                theta = 360 + theta
             f_x, f_y = self._line_calc(theta, (x, y))
             r_x, r_y = self._line_calc(add_angles(theta, 90), (x, y))
             ax.plot([x, f_x], [y, f_y], 'r--', lw=1)
@@ -483,9 +484,9 @@ def main():
     # ====================== SIMULATION INTERFACE =========================
     initial_state = (100, 100., 60.)
     # initial_state = (250, 250., 60.)
-    nonlinear_traj = False
+    nonlinear_traj = True
     increased_resolution = False
-    unknown_location = False
+    unknown_location = True
     # =====================================================================
 
     u = []
@@ -496,8 +497,20 @@ def main():
             else:
                 u.append([0.8, 4.2])
     else:
-        for i in range(10):
-            u.append([2, 2])
+        if unknown_location:
+            for i in range(10):
+                u.append([1, 1])
+        else:
+            for i in range(10):
+                u.append([2, 2])
+
+    if increased_resolution and nonlinear_traj:
+        u = []
+        for i in range(100):
+            if i < 50:
+                u.append([1.5, 0.2])
+            else:
+                u.append([0.8, 4.2])
 
     robot = EKFRobot(initial_state)
     robot.run_localization(initial_state, u,
