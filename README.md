@@ -12,7 +12,7 @@ Designed for students who have wondered about inner workings of Roomba, selfie d
 - Lab 1: MDPs and optimal policies
 - Lab 2: Trajectory planning using PRM / RRT
 - Lab 3: State estimation using Kalman Filters
-- Research Report
+- Project: Research Report
 
 ### Topics
 - MDPs and Policies

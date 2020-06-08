@@ -501,8 +501,8 @@ def main():
     # ====================== SIMULATION INTERFACE =========================
     # initial_state = (100, 100., 60.)
     initial_state = (250, 250., 60.)
-    nonlinear_traj = False
-    increased_resolution = False
+    nonlinear_traj = True
+    increased_resolution = True
     unknown_location = False
     # =====================================================================
 
